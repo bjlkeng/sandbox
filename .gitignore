@@ -87,3 +87,8 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Data files
+*.hdf5
+*.mat
+*.gz
