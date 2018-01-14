@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 '''ResNet50 model for Keras.
 
-BKENG: Modified from original Keras code
+BKENG: Modified from original Keras code to add Conv2DTranspose block
 
 # Reference:
 
@@ -62,35 +62,24 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
     conv_name_base = 'res' + str(stage) + block + '_branch'
     bn_name_base = 'bn' + str(stage) + block + '_branch'
 
-    keras_layers = []
     x = Conv2D(filters1, (1, 1), name=conv_name_base + '2a')(input_tensor)
-    keras_layers.append(x._keras_history[0])
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = Conv2D(filters2, kernel_size,
                padding='same', name=conv_name_base + '2b')(x)
-    keras_layers.append(x._keras_history[0])
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-    keras_layers.append(x._keras_history[0])
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-    keras_layers.append(x._keras_history[0])
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = layers.add([x, input_tensor])
-    keras_layers.append(x._keras_history[0])
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
 
-    return x, keras_layers
+    return x
 
 
 def conv_block(input_tensor, kernel_size, filters, stage, block,
@@ -120,39 +109,26 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
 
     convfn = Conv2D if not transpose else Conv2DTranspose
 
-    keras_layers = []
     x = convfn(filters1, (1, 1), strides=strides,
                name=conv_name_base + '2a')(input_tensor)
-    keras_layers.append(x._keras_history[0])
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
-    keras_layers.append(x._keras_history[0])
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = Conv2D(filters2, kernel_size, padding='same',
                name=conv_name_base + '2b')(x)
-    keras_layers.append(x._keras_history[0])
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-    keras_layers.append(x._keras_history[0])
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
 
     x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-    keras_layers.append(x._keras_history[0])
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
-    keras_layers.append(x._keras_history[0])
 
     shortcut = convfn(filters3, (1, 1), strides=strides,
                       name=conv_name_base + '1')(input_tensor)
-    keras_layers.append(x._keras_history[0])
     shortcut = BatchNormalization(axis=bn_axis, name=bn_name_base + '1')(shortcut)
-    keras_layers.append(x._keras_history[0])
 
     x = layers.add([x, shortcut])
-    keras_layers.append(x._keras_history[0])
     x = Activation('relu')(x)
-    keras_layers.append(x._keras_history[0])
-    return x, keras_layers
+    return x
 
 
 def ResNet50(include_top=True, weights='imagenet',
