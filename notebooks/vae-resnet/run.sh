@@ -9,5 +9,5 @@ for depth in 0 1 2 3; do
     cp vae-cifar10{,-depth$depth}.ipynb
     jupyter nbconvert --to notebook --execute vae-cifar10-depth$depth.ipynb --ExecutePreprocessor.timeout=-1
     rm vae-cifar10-depth$depth.ipynb
-    cp vae-cifar10-depth${depth}*.ipynb $OUTDIR
+    mv vae-cifar10-depth${depth}.nbconvert.ipynb $OUTDIR
 done
