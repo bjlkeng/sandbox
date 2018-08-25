@@ -3,8 +3,8 @@ export CMDLINE=1
 export OUTDIR="output-$(date +'%s')"
 mkdir -p $OUTDIR
 
-for use_preprocessing in 0 1; do
-    for run_num in 1 2 3 4 5; do
+for run_num in 1 2 3 4 5; do
+    for use_preprocessing in 1 0; do
         echo "USE_PREPROCESSING=$use_preprocessing, RUN=$run_num"
         export USE_PREPROCESSING="$use_preprocessing"
         export RUN_NUM="$run_num"
