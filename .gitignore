@@ -92,3 +92,9 @@ ENV/
 *.hdf5
 *.mat
 *.gz
+*.swo
+*.amat
+
+# VIM files
+*.swp
+*.swo
