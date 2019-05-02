@@ -47,13 +47,23 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     cdfminus_safe = K.sigmoid(cdfminus_arg)
     cdfplus_safe = K.sigmoid(cdfplus_arg)
 
+    mid_in = centered_mean * K.exp(x_decoded_invs)
+    log_pdf_mid = mid_in + x_decoded_invs - 2 * K.tf.nn.softplus(mid_in)
+
     # ln (sigmoid(x)) = x - ln(e^x + 1) = x - softplus(x)
     # ln (1 - sigmoid(x)) = ln(1 / (1 + e^x)) = -softplus(x)
     log_cdfplus = cdfplus_arg - K.tf.nn.softplus(cdfplus_arg)
     log_1minus_cdf = -K.tf.nn.softplus(cdfminus_arg)
     log_ll = K.tf.where(x <= -0.999, log_cdfplus,
                         K.tf.where(x >= 0.999, log_1minus_cdf,
-                                   K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-10))))
+                                   K.tf.where(cdfplus_safe - cdfminus_safe > 1e-5,
+                                              K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-12)),
+                                              log_pdf_mid - np.log(127.5))))
+    # K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-8))))
+
+    # tf.where(cdf_delta > 1e-5,
+    #          tf.log(tf.maximum(cdf_delta, 1e-12)),
+    #          log_pdf_mid - np.log(127.5))))
 
     # x_weights * [sigma(x+0.5...) - sigma(x-0.5 ...) ]
     # = log x_weights + log (...)
@@ -66,7 +76,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
         result.append(v)
     result = K.batch_flatten(K.stack(result, axis=-1))
 
-    return -K.sum(result, axis=-1)
+    return -K.sum(K.sum(result, axis=-1))
 
 
 def sigmoid(x):
