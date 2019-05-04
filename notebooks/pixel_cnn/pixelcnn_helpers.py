@@ -8,6 +8,12 @@ from keras.layers import Conv2D
 from keras.engine import InputSpec
 
 
+def logsoftmax(x):
+    ''' Numerically stable log(softmax(x)) '''
+    m = K.max(x, axis=-1, keepdims=True)
+    return x - m - K.log(K.sum(K.exp(x - m), axis=-1, keepdims=True))
+
+
 def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     ''' Keras PixelCNN loss function. Use a lambda to fill in the last few
         parameters
@@ -24,10 +30,10 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     # Extract out each of the mixture parameters (multiple of 3 b/c of image channels)
     output_m = output[:, :, :, :3*n_components]
     output_invs = output[:, :, :, 3*n_components:6*n_components]
-    output_weights = output[:, :, :, 6*(n_components):]
-    x = K.reshape(target, (-1, img_rows, img_cols, img_chns))
+    output_logit_weights = output[:, :, :, 6*(n_components):]
 
     # Repeat the target to match the number of mixture component shapes
+    x = K.reshape(target, (-1, img_rows, img_cols, img_chns))
     slices = []
     for c in range(img_chns):
         slices += [x[:, :, :, c:c+1]] * n_components
@@ -35,7 +41,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
 
     x_decoded_m = output_m
     x_decoded_invs = output_invs
-    x_weights = output_weights
+    x_logit_weights = output_logit_weights
 
     # Pixels rescaled to be in [-1, 1] interval
     offset = 1. / 127.5 / 2.
@@ -48,10 +54,11 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     cdfplus_safe = K.sigmoid(cdfplus_arg)
 
     mid_in = centered_mean * K.exp(x_decoded_invs)
-    log_pdf_mid = mid_in + x_decoded_invs - 2 * K.tf.nn.softplus(mid_in)
+    log_pdf_mid = mid_in - K.tf.nn.softplus(mid_in)
 
     # ln (sigmoid(x)) = x - ln(e^x + 1) = x - softplus(x)
     # ln (1 - sigmoid(x)) = ln(1 / (1 + e^x)) = -softplus(x)
+    # Use trick from PixelCNN++ implementation to protect against edge/overflow cases
     log_cdfplus = cdfplus_arg - K.tf.nn.softplus(cdfplus_arg)
     log_1minus_cdf = -K.tf.nn.softplus(cdfminus_arg)
     log_ll = K.tf.where(x <= -0.999, log_cdfplus,
@@ -59,15 +66,11 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
                                    K.tf.where(cdfplus_safe - cdfminus_safe > 1e-5,
                                               K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-12)),
                                               log_pdf_mid - np.log(127.5))))
-    # K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-8))))
-
-    # tf.where(cdf_delta > 1e-5,
-    #          tf.log(tf.maximum(cdf_delta, 1e-12)),
-    #          log_pdf_mid - np.log(127.5))))
 
     # x_weights * [sigma(x+0.5...) - sigma(x-0.5 ...) ]
     # = log x_weights + log (...)
-    pre_result = K.log(x_weights) + log_ll
+    # Compute log(softmax(.)) directly here, instead of doing 2-step to avoid overflow
+    pre_result = logsoftmax(x_logit_weights) + log_ll
 
     result = []
     for chn in range(img_chns):
