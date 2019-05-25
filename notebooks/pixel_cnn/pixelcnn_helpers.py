@@ -63,7 +63,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     log_1minus_cdf = -K.tf.nn.softplus(cdfminus_arg)
     log_ll = K.tf.where(x <= -0.999, log_cdfplus,
                         K.tf.where(x >= 0.999, log_1minus_cdf,
-                                   K.tf.where(cdfplus_safe - cdfminus_safe > 1e-5,
+                                   K.tf.where(cdfplus_safe - cdfminus_safe > 1e-12,
                                               K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-12)),
                                               log_pdf_mid - np.log(127.5))))
 
