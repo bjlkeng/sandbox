@@ -53,17 +53,24 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     cdfminus_safe = K.sigmoid(cdfminus_arg)
     cdfplus_safe = K.sigmoid(cdfplus_arg)
 
+    # Generate the PDF (logistic) in case the `m` is way off (cdf is too small)
+    # pdf = e^(-(x-m)/s) / {s(1 + e^{-(x-m)/s})^2}
+    # logpdf = -(x-m)/s - log s - 2 * log(1 + e^(-(x-m)/s))
+    #        = -mid_in - invs - 2 * softplus(-mid_in)
     mid_in = centered_mean * K.exp(x_decoded_invs)
-    log_pdf_mid = mid_in - K.tf.nn.softplus(mid_in)
+    log_pdf_mid = -mid_in - x_decoded_invs - 2. * K.tf.nn.softplus(-mid_in)
 
     # ln (sigmoid(x)) = x - ln(e^x + 1) = x - softplus(x)
     # ln (1 - sigmoid(x)) = ln(1 / (1 + e^x)) = -softplus(x)
     # Use trick from PixelCNN++ implementation to protect against edge/overflow cases
+    # In extreme cases (cdfplus_safe - cdf_minus_safe < 1e-5), use the
+    # log_pdf_mid and assume that density is 1 pixel width wide (1/127.5) as
+    # the density: log(pdf * 1/127.5) = log(pdf) - log(127.5)
     log_cdfplus = cdfplus_arg - K.tf.nn.softplus(cdfplus_arg)
     log_1minus_cdf = -K.tf.nn.softplus(cdfminus_arg)
     log_ll = K.tf.where(x <= -0.999, log_cdfplus,
                         K.tf.where(x >= 0.999, log_1minus_cdf,
-                                   K.tf.where(cdfplus_safe - cdfminus_safe > 1e-12,
+                                   K.tf.where(cdfplus_safe - cdfminus_safe > 1e-5,
                                               K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-12)),
                                               log_pdf_mid - np.log(127.5))))
 
