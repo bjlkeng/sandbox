@@ -64,7 +64,9 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     # In extreme cases (cdfplus_safe - cdf_minus_safe < 1e-5), use the
     # log_pdf_mid and assume that density is 1 pixel width wide (1/127.5) as
     # the density: log(pdf * 1/127.5) = log(pdf) - log(127.5)
-    edge_case = log_pdf_mid - np.log(127.5)
+    # Add on line of best fit (see notebooks/blog post) to the difference between
+    # edge case and the standard case
+    edge_case = log_pdf_mid - np.log(127.5) - 1.04 * x_decoded_invs + 9.8
 
     # ln (sigmoid(x)) = x - ln(e^x + 1) = x - softplus(x)
     # ln (1 - sigmoid(x)) = ln(1 / (1 + e^x)) = -softplus(x)
