@@ -66,7 +66,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
     # the density: log(pdf * 1/127.5) = log(pdf) - log(127.5)
     # Add on line of best fit (see notebooks/blog post) to the difference between
     # edge case and the standard case
-    edge_case = log_pdf_mid - np.log(127.5) - 1.04 * x_decoded_invs + 9.8
+    edge_case = log_pdf_mid - np.log(127.5) + 2.04 * x_decoded_invs - 0.107
 
     # ln (sigmoid(x)) = x - ln(e^x + 1) = x - softplus(x)
     # ln (1 - sigmoid(x)) = ln(1 / (1 + e^x)) = -softplus(x)
@@ -90,7 +90,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
         result.append(v)
     result = K.batch_flatten(K.stack(result, axis=-1))
 
-    return -K.sum(K.sum(result, axis=-1))
+    return -K.sum(result, axis=-1)
 
 
 def sigmoid(x):
