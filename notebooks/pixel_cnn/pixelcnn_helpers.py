@@ -2,7 +2,6 @@ import math
 import numpy as np
 
 from keras import backend as K
-from scipy.stats import logistic
 
 from keras.layers import Conv2D
 from keras.engine import InputSpec
@@ -94,19 +93,29 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
 
 
 def sigmoid(x):
+    # Protect overflow
+    if x < -20:
+        return 0.0
+    elif x > 20:
+        return 1.0
+
     return 1 / (1 + math.exp(-x))
+
+
+def logistic_cdf(x, loc, scale):
+    return sigmoid((x - loc) / scale)
 
 
 def compute_pvals(m, invs):
     pvals = []
     for i in range(256):
         if i == 0:
-            pval = logistic.cdf((0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
+            pval = logistic_cdf((0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
         elif i == 255:
-            pval = 1. - logistic.cdf((254.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
+            pval = 1. - logistic_cdf((254.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
         else:
-            pval = (logistic.cdf((i + 0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
-                    - logistic.cdf((i - 0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs)))
+            pval = (logistic_cdf((i + 0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs))
+                    - logistic_cdf((i - 0.5 - 127.5) / 127.5, loc=m, scale=1. / np.exp(invs)))
         pvals.append(pval)
 
     return pvals
@@ -115,7 +124,9 @@ def compute_pvals(m, invs):
 def compute_mixture(ms, invs, weights, n_comps):
     components = []
     for i in range(n_comps):
-        components.append(weights[i] * np.array(compute_pvals(ms[i], invs[i])))
+        pvals = compute_pvals(ms[i], invs[i])
+        arr = np.array(pvals)
+        components.append(weights[i] * arr)
     return np.sum(components, axis=0)
 
 
