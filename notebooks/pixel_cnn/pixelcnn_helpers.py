@@ -3,7 +3,7 @@ import numpy as np
 
 from keras import backend as K
 
-from keras.layers import Conv2D
+from keras.layers import Conv2D, Concatenate, Activation, Add
 from keras.engine import InputSpec
 
 
@@ -229,3 +229,42 @@ class PixelConv2D(Conv2D):
             return self.activation(outputs)
 
         return outputs
+
+
+def conv_block(input_tensor, filters, kernel_size, name, is_first=False):
+    outs = []
+    for t in ['rb', 'gb', 'bb']:
+        if is_first:
+            t = t[0] + 'a'
+        x = PixelConv2D(t, filters, kernel_size,
+                        name='res' + name + t, padding='same')(input_tensor)
+        x = Activation('relu')(x)
+        outs.append(x)
+
+    return Concatenate()(outs)
+
+
+def resnet_block(input_tensor, filters, stage, block, kernel=3):
+    name_base = str(stage) + block + '_branch'
+    filters1, filters2, filters3 = filters
+    x = input_tensor
+    x = conv_block(x, filters1, (1, 1), name=name_base + '_a-1x1')
+    x = conv_block(x, filters2, (kernel, kernel),
+                   name=name_base + '_b-{}x{}'.format(kernel, kernel))
+    x = conv_block(x, filters3, (1, 1), name=name_base + '_c-1x1')
+    x = Add()([x, input_tensor])
+
+    return x
+
+
+def final_block(input_tensor, filters, in_filters, name, kernel_size=(1, 1)):
+    outs = []
+    for t in ['rb', 'gb', 'bb']:
+        x = PixelConv2D(t, filters, kernel_size,
+                        name='final' + name + '_' + t,
+                        padding='same')(input_tensor)
+        x = Activation('relu')(x)
+        outs.append(x)
+
+    return Concatenate()(outs)
+
