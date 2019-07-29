@@ -1,0 +1,16 @@
+0. Pixel transformations
+1. Masked layer (including coupling)
+    * Unit tests mask work as expected
+2. Build trivial network with alternative masked/coupling layers + loss function
+    * Fit a multidimensional Gaussian
+    * Fit a 2D spiral (2 pixels)
+    * Fit a single small image (2x2, 4x4), see if we can generate it
+3. Batch norm/weight norm
+    * Test out running average batch norm -- ensure we can fit a standard
+      classifier with batchsize=1 (e.g. cifar + resnet)
+    * Test out single small image above, but adding in modifications to loss
+      function/log determinant
+4. Multi-scale architecture
+    * Test out single cifar image with smaller multi-scale architecture depth
+    * Go deeper with more images
+5. Done!
