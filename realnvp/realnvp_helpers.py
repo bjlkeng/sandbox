@@ -251,11 +251,12 @@ class FlowBatchNorm(Layer):
                         inputs)
 
         def expand_batch(tensor):
-            assert len(tensor.shape) == 1, K.shape(tensor)
-            t = K.reshape(tensor, (1, 1, 1, K.shape(tensor)[0]))
-            for axis in range(len(input_shape[:-1])):
-                t = K.repeat_elements(t, input_shape[axis], axis)
-            return t
+            return inputs * 0 + tensor
+            # assert len(tensor.shape) == 1, K.shape(tensor)
+            # t = K.reshape(tensor, (1, 1, 1, K.shape(tensor)[0]))
+            # for axis in range(len(input_shape[:-1])):
+            #     t = K.repeat_elements(t, input_shape[axis], axis)
+            # return t
 
         # Pick the normalized form corresponding to the training phase.
         return [K.in_train_phase(normed_training, normalize_inference, training=training),
