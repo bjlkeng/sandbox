@@ -161,6 +161,7 @@ class FlowBatchNorm(Layer):
                                         constraint=self.beta_constraint)
         else:
             self.beta = None
+        self.add_loss(self.gamma)
         self.moving_mean = self.add_weight(
             shape=shape,
             name='moving_mean',
@@ -252,15 +253,10 @@ class FlowBatchNorm(Layer):
 
         def expand_batch(tensor):
             return inputs * 0 + tensor
-            # assert len(tensor.shape) == 1, K.shape(tensor)
-            # t = K.reshape(tensor, (1, 1, 1, K.shape(tensor)[0]))
-            # for axis in range(len(input_shape[:-1])):
-            #     t = K.repeat_elements(t, input_shape[axis], axis)
-            # return t
 
         # Pick the normalized form corresponding to the training phase.
         return [K.in_train_phase(normed_training, normalize_inference, training=training),
-                expand_batch(mean),
+                expand_batch(self.gamma),
                 expand_batch(orig_variance)]
 
     def get_config(self):
