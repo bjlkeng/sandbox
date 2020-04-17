@@ -161,7 +161,6 @@ class FlowBatchNorm(Layer):
                                         constraint=self.beta_constraint)
         else:
             self.beta = None
-        self.add_loss(self.gamma)
         self.moving_mean = self.add_weight(
             shape=shape,
             name='moving_mean',
@@ -177,6 +176,8 @@ class FlowBatchNorm(Layer):
 
     def call(self, inputs, training=None):
         input_shape = K.int_shape(inputs)
+
+        assert input_shape[0] is not None, "Must explicitly specify batch size"
         # Prepare broadcasting shape.
         ndim = len(input_shape)
         reduction_axes = list(range(len(input_shape)))
@@ -186,8 +187,6 @@ class FlowBatchNorm(Layer):
 
         # Determines whether broadcasting is needed.
         needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
-        assert not needs_broadcasting, \
-            'bkeng: Oh... it means repeating across different dimensions (like numpy)'
 
         def normalize_inference():
             if needs_broadcasting:
@@ -231,7 +230,13 @@ class FlowBatchNorm(Layer):
         normed_training, mean, variance = K.normalize_batch_in_training(
             inputs, self.gamma, self.beta, reduction_axes,
             epsilon=self.epsilon)
-        orig_variance = variance
+
+        # bkeng: Explicitly add determinant loss here as: `-log(gamma / sqrt(var + eps))`
+        def expand_batch(tensor):
+            return inputs * 0 + tensor
+        loss = expand_batch(-K.log(self.gamma) + 0.5 * K.log(variance + self.epsilon))
+        self.add_loss(loss, inputs=True)
+        self.add_metric(loss, aggregation='mean', name='BatchNormLoss')
 
         if K.backend() != 'cntk':
             sample_size = K.prod([K.shape(inputs)[axis]
@@ -251,13 +256,9 @@ class FlowBatchNorm(Layer):
                                                  self.momentum)],
                         inputs)
 
-        def expand_batch(tensor):
-            return inputs * 0 + tensor
 
         # Pick the normalized form corresponding to the training phase.
-        return [K.in_train_phase(normed_training, normalize_inference, training=training),
-                expand_batch(self.gamma),
-                expand_batch(orig_variance)]
+        return K.in_train_phase(normed_training, normalize_inference, training=training)
 
     def get_config(self):
         config = {
@@ -281,4 +282,4 @@ class FlowBatchNorm(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):
-        return [input_shape, input_shape, input_shape]
+        return input_shape
