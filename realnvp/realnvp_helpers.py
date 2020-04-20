@@ -1,8 +1,14 @@
 import numpy as np
-from keras import backend as K
-from keras.engine import InputSpec
+from tensorflow.keras import backend as K
 
-from keras.layers import (BatchNormalization, Layer, Activation, Conv2D, add, initializers, regularizers, constraints)
+from tensorflow.python.keras.layers import (InputSpec, Layer)
+from tensorflow.python.keras.layers.normalization import BatchNormalizationBase
+
+from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 
 
 class Mask(Layer):
@@ -59,46 +65,9 @@ class Mask(Layer):
         return self.mask * inputs
 
 
-class FlowBatchNorm(Layer):
-    """ Modified BatchNorm implementation so that I can get determiniant for flow-based netweorks
-        Layer returns a LIST: [batchnorm_out, mean, var]
-
-    Batch normalization layer (Ioffe and Szegedy, 2014).
-    Normalize the activations of the previous layer at each batch,
-    i.e. applies a transformation that maintains the mean activation
-    close to 0 and the activation standard deviation close to 1.
-    # Arguments
-        axis: Integer, the axis that should be normalized
-            (typically the features axis).
-            For instance, after a `Conv2D` layer with
-            `data_format="channels_first"`,
-            set `axis=1` in `BatchNormalization`.
-        momentum: Momentum for the moving mean and the moving variance.
-        epsilon: Small float added to variance to avoid dividing by zero.
-        center: If True, add offset of `beta` to normalized tensor.
-            If False, `beta` is ignored.
-        scale: If True, multiply by `gamma`.
-            If False, `gamma` is not used.
-            When the next layer is linear (also e.g. `nn.relu`),
-            this can be disabled since the scaling
-            will be done by the next layer.
-        beta_initializer: Initializer for the beta weight.
-        gamma_initializer: Initializer for the gamma weight.
-        moving_mean_initializer: Initializer for the moving mean.
-        moving_variance_initializer: Initializer for the moving variance.
-        beta_regularizer: Optional regularizer for the beta weight.
-        gamma_regularizer: Optional regularizer for the gamma weight.
-        beta_constraint: Optional constraint for the beta weight.
-        gamma_constraint: Optional constraint for the gamma weight.
-    # Input shape
-        Arbitrary. Use the keyword argument `input_shape`
-        (tuple of integers, does not include the samples axis)
-        when using this layer as the first layer in a model.
-    # Output shape
-        Same shape as input.
-    # References
-        - [Batch Normalization: Accelerating Deep Network Training by
-           Reducing Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+class FlowBatchNorm(BatchNormalizationBase):
+    """ Modified BatchNorm implementation so that I can add determiniant loss
+        for flow-based networks Layer
     """
 
     def __init__(self,
@@ -115,171 +84,227 @@ class FlowBatchNorm(Layer):
                  gamma_regularizer=None,
                  beta_constraint=None,
                  gamma_constraint=None,
+                 renorm=False,
+                 renorm_clipping=None,
+                 renorm_momentum=0.99,
+                 trainable=True,
+                 name=None,
                  **kwargs):
-        super(FlowBatchNorm, self).__init__(**kwargs)
-        self.supports_masking = True
-        self.axis = axis
-        self.momentum = momentum
-        self.epsilon = epsilon
-        self.center = center
-        self.scale = scale
-        self.beta_initializer = initializers.get(beta_initializer)
-        self.gamma_initializer = initializers.get(gamma_initializer)
-        self.moving_mean_initializer = initializers.get(moving_mean_initializer)
-        self.moving_variance_initializer = (
-            initializers.get(moving_variance_initializer))
-        self.beta_regularizer = regularizers.get(beta_regularizer)
-        self.gamma_regularizer = regularizers.get(gamma_regularizer)
-        self.beta_constraint = constraints.get(beta_constraint)
-        self.gamma_constraint = constraints.get(gamma_constraint)
-        self.ones = None
-
-    def build(self, input_shape):
-        dim = input_shape[self.axis]
-        if dim is None:
-            raise ValueError('Axis ' + str(self.axis) + ' of '
-                             'input tensor should have a defined dimension '
-                             'but the layer received an input with shape ' +
-                             str(input_shape) + '.')
-        self.input_spec = InputSpec(ndim=len(input_shape),
-                                    axes={self.axis: dim})
-        shape = (dim,)
-
-        if self.scale:
-            self.gamma = self.add_weight(shape=shape,
-                                         name='gamma',
-                                         initializer=self.gamma_initializer,
-                                         regularizer=self.gamma_regularizer,
-                                         constraint=self.gamma_constraint)
-        else:
-            self.gamma = None
-        if self.center:
-            self.beta = self.add_weight(shape=shape,
-                                        name='beta',
-                                        initializer=self.beta_initializer,
-                                        regularizer=self.beta_regularizer,
-                                        constraint=self.beta_constraint)
-        else:
-            self.beta = None
-        self.moving_mean = self.add_weight(
-            shape=shape,
-            name='moving_mean',
-            initializer=self.moving_mean_initializer,
-            trainable=False)
-        self.moving_variance = self.add_weight(
-            shape=shape,
-            name='moving_variance',
-            initializer=self.moving_variance_initializer,
-            trainable=False)
-
-        self.built = True
+        super(FlowBatchNorm, self).__init__(name=name, fused=False,
+                                            virtual_batch_size=None,
+                                            adjustment=None,
+                                            renorm=False,
+                                            **kwargs)
 
     def call(self, inputs, training=None):
-        input_shape = K.int_shape(inputs)
+        training = self._get_training_value(training)
 
-        assert input_shape[0] is not None, "Must explicitly specify batch size"
-        # Prepare broadcasting shape.
-        ndim = len(input_shape)
-        reduction_axes = list(range(len(input_shape)))
-        del reduction_axes[self.axis]
-        broadcast_shape = [1] * len(input_shape)
-        broadcast_shape[self.axis] = input_shape[self.axis]
+        assert self.virtual_batch_size is None, "Disabled"
+        assert self.fused is False, "Disabled"
+        assert self.adjustment is None, "Disabled"
+        assert self.renorm is False, "Disabled"
 
-        # Determines whether broadcasting is needed.
-        needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
+        # Compute the axes along which to reduce the mean / variance
+        input_shape = inputs.shape
+        ndims = len(input_shape)
+        reduction_axes = [i for i in range(ndims) if i not in self.axis]
 
-        def normalize_inference():
-            if needs_broadcasting:
-                # In this case we must explicitly broadcast all parameters.
-                broadcast_moving_mean = K.reshape(self.moving_mean,
-                                                  broadcast_shape)
-                broadcast_moving_variance = K.reshape(self.moving_variance,
-                                                      broadcast_shape)
-                if self.center:
-                    broadcast_beta = K.reshape(self.beta, broadcast_shape)
-                else:
-                    broadcast_beta = None
-                if self.scale:
-                    broadcast_gamma = K.reshape(self.gamma,
-                                                broadcast_shape)
-                else:
-                    broadcast_gamma = None
-                return K.batch_normalization(
-                    inputs,
-                    broadcast_moving_mean,
-                    broadcast_moving_variance,
-                    broadcast_beta,
-                    broadcast_gamma,
-                    axis=self.axis,
-                    epsilon=self.epsilon)
+        # Broadcasting only necessary for single-axis batch norm where the axis is
+        # not the last dimension
+        broadcast_shape = [1] * ndims
+        broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
+
+        def _broadcast(v):
+            cond = (v is not None and len(v.shape) != ndims and
+                    reduction_axes != list(range(ndims - 1)))
+            if cond:
+                return array_ops.reshape(v, broadcast_shape)
+            return v
+
+        scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+        def _compose_transforms(scale, offset, then_scale, then_offset):
+            if then_scale is not None:
+                scale *= then_scale
+                offset *= then_scale
+            if then_offset is not None:
+                offset += then_offset
+            return (scale, offset)
+
+        # Determine a boolean value for `training`: could be True, False, or None.
+        training_value = tf_utils.constant_value(training)
+        if training_value is False:
+            mean, variance = self.moving_mean, self.moving_variance
+        else:
+            # Some of the computations here are not necessary when training==False
+            # but not a constant. However, this makes the code simpler.
+            keep_dims = self.virtual_batch_size is not None or len(self.axis) > 1
+            mean, variance = self._moments(
+                math_ops.cast(inputs, self._param_dtype),
+                reduction_axes,
+                keep_dims=keep_dims)
+
+            moving_mean = self.moving_mean
+            moving_variance = self.moving_variance
+
+            mean = tf_utils.smart_cond(training, lambda: mean,
+                                       lambda: ops.convert_to_tensor_v2(moving_mean))
+            variance = tf_utils.smart_cond(
+                training, lambda: variance,
+                lambda: ops.convert_to_tensor_v2(moving_variance))
+
+            new_mean, new_variance = mean, variance
+
+            if self._support_zero_size_input():
+                # Keras assumes that batch dimension is the first dimension for Batch
+                # Normalization.
+                input_batch_size = array_ops.shape(inputs)[0]
             else:
-                return K.batch_normalization(
-                    inputs,
-                    self.moving_mean,
-                    self.moving_variance,
-                    self.beta,
-                    self.gamma,
-                    axis=self.axis,
-                    epsilon=self.epsilon)
+                input_batch_size = None
 
-        # If the learning phase is *static* and set to inference:
-        if training in {0, False}:
-            return normalize_inference(), self.moving_mean, self.moving_variance
+            def _do_update(var, value):
+                """Compute the updates for mean and variance."""
+                return self._assign_moving_average(var, value, self.momentum,
+                                                   input_batch_size)
 
-        # If the learning is either dynamic, or set to training:
-        normed_training, mean, variance = K.normalize_batch_in_training(
-            inputs, self.gamma, self.beta, reduction_axes,
-            epsilon=self.epsilon)
+            def mean_update():
+                true_branch = lambda: _do_update(self.moving_mean, new_mean)
+                false_branch = lambda: self.moving_mean
+                return tf_utils.smart_cond(training, true_branch, false_branch)
 
-        # bkeng: Explicitly add determinant loss here as: `-log(gamma / sqrt(var + eps))`
-        def expand_batch(tensor):
-            return inputs * 0 + tensor
-        loss = expand_batch(-K.log(self.gamma) + 0.5 * K.log(variance + self.epsilon))
-        self.add_loss(loss, inputs=True)
-        self.add_metric(loss, aggregation='mean', name='BatchNormLoss')
+            def variance_update():
+                """Update the moving variance."""
 
-        if K.backend() != 'cntk':
-            sample_size = K.prod([K.shape(inputs)[axis]
-                                  for axis in reduction_axes])
-            sample_size = K.cast(sample_size, dtype=K.dtype(inputs))
-            if K.backend() == 'tensorflow' and sample_size.dtype != 'float32':
-                sample_size = K.cast(sample_size, dtype='float32')
+                def true_branch_renorm():
+                    # We apply epsilon as part of the moving_stddev to mirror the training
+                    # code path.
+                    moving_stddev = _do_update(self.moving_stddev,
+                                               math_ops.sqrt(new_variance + self.epsilon))
+                    return self._assign_new_value(
+                        self.moving_variance,
+                        # Apply relu in case floating point rounding causes it to go
+                        # negative.
+                        K.relu(moving_stddev * moving_stddev - self.epsilon))
 
-            # sample variance - unbiased estimator of population variance
-            variance *= sample_size / (sample_size - (1.0 + self.epsilon))
+                if self.renorm:
+                    true_branch = true_branch_renorm
+                else:
+                    true_branch = lambda: _do_update(self.moving_variance, new_variance)
 
-        self.add_update([K.moving_average_update(self.moving_mean,
-                                                 mean,
-                                                 self.momentum),
-                         K.moving_average_update(self.moving_variance,
-                                                 variance,
-                                                 self.momentum)],
-                        inputs)
+                false_branch = lambda: self.moving_variance
+                return tf_utils.smart_cond(training, true_branch, false_branch)
+
+            self.add_update(mean_update)
+            self.add_update(variance_update)
+
+        mean = math_ops.cast(mean, inputs.dtype)
+        variance = math_ops.cast(variance, inputs.dtype)
+        if offset is not None:
+            offset = math_ops.cast(offset, inputs.dtype)
+        if scale is not None:
+            scale = math_ops.cast(scale, inputs.dtype)
+        # TODO(reedwm): Maybe do math in float32 if given float16 inputs, if doing
+        # math in float16 hurts validation accuracy of popular models like resnet.
+        outputs = nn.batch_normalization(inputs,
+                                         _broadcast(mean),
+                                         _broadcast(variance),
+                                         offset,
+                                         scale,
+                                         self.epsilon)
+        # If some components of the shape got lost due to adjustments, fix that.
+        outputs.set_shape(input_shape)
+
+        # bkeng: Flow loss/metric
+        self.add_flow_loss(variance, scale)
+
+        return outputs
+
+    def add_flow_loss(self, variance, scale):
+        pass
 
 
-        # Pick the normalized form corresponding to the training phase.
-        return K.in_train_phase(normed_training, normalize_inference, training=training)
-
-    def get_config(self):
-        config = {
-            'axis': self.axis,
-            'momentum': self.momentum,
-            'epsilon': self.epsilon,
-            'center': self.center,
-            'scale': self.scale,
-            'beta_initializer': initializers.serialize(self.beta_initializer),
-            'gamma_initializer': initializers.serialize(self.gamma_initializer),
-            'moving_mean_initializer':
-                initializers.serialize(self.moving_mean_initializer),
-            'moving_variance_initializer':
-                initializers.serialize(self.moving_variance_initializer),
-            'beta_regularizer': regularizers.serialize(self.beta_regularizer),
-            'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
-            'beta_constraint': constraints.serialize(self.beta_constraint),
-            'gamma_constraint': constraints.serialize(self.gamma_constraint)
-        }
-        base_config = super(BatchNormalization, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
+#    def call(self, inputs, training=None):
+#        input_shape = K.int_shape(inputs)
+#
+#        assert input_shape[0] is not None, "Must explicitly specify batch size"
+#        # Prepare broadcasting shape.
+#        ndim = len(input_shape)
+#        reduction_axes = list(range(len(input_shape)))
+#        del reduction_axes[self.axis]
+#        broadcast_shape = [1] * len(input_shape)
+#        broadcast_shape[self.axis] = input_shape[self.axis]
+#
+#        # Determines whether broadcasting is needed.
+#        needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
+#
+#        def normalize_inference():
+#            if needs_broadcasting:
+#                # In this case we must explicitly broadcast all parameters.
+#                broadcast_moving_mean = K.reshape(self.moving_mean,
+#                                                  broadcast_shape)
+#                broadcast_moving_variance = K.reshape(self.moving_variance,
+#                                                      broadcast_shape)
+#                if self.center:
+#                    broadcast_beta = K.reshape(self.beta, broadcast_shape)
+#                else:
+#                    broadcast_beta = None
+#                if self.scale:
+#                    broadcast_gamma = K.reshape(self.gamma,
+#                                                broadcast_shape)
+#                else:
+#                    broadcast_gamma = None
+#                return K.batch_normalization(
+#                    inputs,
+#                    broadcast_moving_mean,
+#                    broadcast_moving_variance,
+#                    broadcast_beta,
+#                    broadcast_gamma,
+#                    axis=self.axis,
+#                    epsilon=self.epsilon)
+#            else:
+#                return K.batch_normalization(
+#                    inputs,
+#                    self.moving_mean,
+#                    self.moving_variance,
+#                    self.beta,
+#                    self.gamma,
+#                    axis=self.axis,
+#                    epsilon=self.epsilon)
+#
+#        # If the learning phase is *static* and set to inference:
+#        if training in {0, False}:
+#            return normalize_inference(), self.moving_mean, self.moving_variance
+#
+#        # If the learning is either dynamic, or set to training:
+#        normed_training, mean, variance = K.normalize_batch_in_training(
+#            inputs, self.gamma, self.beta, reduction_axes,
+#            epsilon=self.epsilon)
+#
+#        # bkeng: Explicitly add determinant loss here as: `-log(gamma / sqrt(var + eps))`
+#        def expand_batch(tensor):
+#            return inputs * 0 + tensor
+#        loss = expand_batch(-K.log(self.gamma) + 0.5 * K.log(variance + self.epsilon))
+#        self.add_loss(loss, inputs=True)
+#        self.add_metric(loss, aggregation='mean', name='BatchNormLoss')
+#
+#        if K.backend() != 'cntk':
+#            sample_size = K.prod([K.shape(inputs)[axis]
+#                                  for axis in reduction_axes])
+#            sample_size = K.cast(sample_size, dtype=K.dtype(inputs))
+#            if K.backend() == 'tensorflow' and sample_size.dtype != 'float32':
+#                sample_size = K.cast(sample_size, dtype='float32')
+#
+#            # sample variance - unbiased estimator of population variance
+#            variance *= sample_size / (sample_size - (1.0 + self.epsilon))
+#
+#        self.add_update([K.moving_average_update(self.moving_mean,
+#                                                 mean,
+#                                                 self.momentum),
+#                         K.moving_average_update(self.moving_variance,
+#                                                 variance,
+#                                                 self.momentum)],
+#                        inputs)
+#
+#
+#        # Pick the normalized form corresponding to the training phase.
+#        return K.in_train_phase(normed_training, normalize_inference, training=training)
