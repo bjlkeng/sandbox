@@ -3,7 +3,7 @@ from math import ceil, floor
 from decimal import Decimal
 
 
-def generate_binary_string(size, alphabet=['a', 'b'], prob=None):
+def generate_string(size, alphabet, prob=None):
     assert len(alphabet) > 0
     if prob is None:
         prob = [1 / len(alphabet)] * len(alphabet)
