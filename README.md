@@ -2,7 +2,6 @@
 
 A random collection of things I'm experimenting with, usually in the form of notebooks.
 
-
 Some blog posts relating to things in here:
 
 * `notebooks/variational-autoencoder.ipynb`: http://bjlkeng.github.io/posts/variational-autoencoders/
@@ -15,4 +14,5 @@ Some blog posts relating to things in here:
 * `notebooks/universal_resnet`: http://bjlkeng.github.io/posts/universal-resnet-the-one-neuron-approximator/
 * `notebooks/vae-importance_sampling`: http://bjlkeng.github.io/posts/importance-sampling-and-estimating-marginal-likelihood-in-variational-autoencoders/
 * `notebooks/pixel_cnn`: http://bjlkeng.github.io/posts/pixelcnn/
+* `ans`: https://bjlkeng.github.io/posts/lossless-compression-with-asymmetric-numeral-systems/
 
