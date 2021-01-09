@@ -42,6 +42,7 @@ def code_rans(symbol, stack, alphabet, freqs, cdf=None, quant_bits=16, renorm_bi
     if DEBUG:
         pcode = code
     index = alphabet.index(symbol)
+    assert int(freqs[index]) != 0, 'Symbol has zero probability - index = %d' % index
 
     # Renormalization - if we would push past 2**renorm_bits, then renorm
     new_code = ((floor(code // int(freqs[index])) << quant_bits)

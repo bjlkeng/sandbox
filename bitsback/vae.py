@@ -5,7 +5,6 @@ https://raw.githubusercontent.com/keras-team/keras-io/master/examples/generative
 Mixture logistic loss from previous implrementation:
 https://github.com/bjlkeng/sandbox/tree/master/notebooks/pixel_cnn
 """
-import math
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -128,6 +127,33 @@ class VAE(keras.Model):
         decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
 
         return decoder
+
+    def test_step(self, data):
+        if isinstance(data, tuple):
+            data = data[0]
+        z_mean, z_log_var, z = self.encoder(data)
+        reconstruction = self.decoder(z)
+
+        # Reconstruction loss using mixture of logistics
+        reconstruction_loss = tf.reduce_mean(
+                pixelcnn_loss(data, reconstruction,
+                              self.shape[0], self.shape[1], self.shape[2],
+                              self.mixture_components)
+        )
+
+        # Regular KL Loss from VAE
+        kl_loss = 1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
+        kl_loss = tf.reduce_mean(kl_loss)
+        kl_loss *= -0.5
+
+        # Putting more weight on kl_loss -- seems to converge a bit more smoothly
+        total_loss = reconstruction_loss + 3 * kl_loss
+
+        return {
+            "loss": total_loss,
+            "reconstruction_loss": reconstruction_loss,
+            "kl_loss": kl_loss,
+        }
 
     def train_step(self, data):
         if isinstance(data, tuple):

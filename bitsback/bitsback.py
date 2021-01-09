@@ -3,65 +3,99 @@ from scipy.stats import norm
 from ans import code_rans, decode_rans
 
 
-def quantize_y(y, quant_bits=16):
-    ''' Quantizes y by returning index of bin corresponding the pdf of isotropic normals
-        into equal probability buckets '''
-    ppf_range = np.linspace(0., 1., (1 << quant_bits) + 1)
-    bins = norm.ppf(ppf_range, np.zeros(len(ppf_range)), np.ones(len(ppf_range)))
-    return np.searchsorted(bins, y)
+BINS = {}
 
 
-def dequantize_y(quant_y, quant_bits=16):
-    ''' Dequantizes y translating index of bin into quantized real values '''
-    ppf_range = np.linspace(0., 1., (1 << quant_bits) + 1)
-    bins = norm.ppf(ppf_range, np.zeros(len(ppf_range)), np.ones(len(ppf_range)))
-    return bins[quant_y]
+def norm_bins(quant_bits=16):
+    ''' Cache calculation '''
+    if quant_bits not in BINS:
+        ppf_range = np.linspace(0., 1., (1 << quant_bits) + 1)
+        BINS[quant_bits] = norm.ppf(ppf_range)
+    return BINS[quant_bits]
 
 
-def decode_y(stack, mu, log_var, quant_bits=16):
-    assert len(mu.shape) == 1
-    assert mu.shape == log_var.shape
+def quantize_y_distribution(mu, log_var, sample_bits=12, quant_bits=16):
+    ''' Quantizes continuous y values into bins of a standard isotropic normal '''
+    assert quant_bits >= sample_bits
+    # Sample equi-probable width points from the source distribution
+    # (Replace -inf and + inf with closest sample to avoid weird situation)
+    ppf_range = np.linspace(0., 1., (1 << sample_bits))
+    ppf_range[0], ppf_range[-1] = ppf_range[1], ppf_range[-2]
+    ppf_range = np.broadcast_to(ppf_range, (len(mu), len(ppf_range)))
+    ppf_range = np.moveaxis(ppf_range, 0, 1)
+
+    samples = norm.ppf(ppf_range, loc=mu, scale=np.exp(log_var))
+    samples = np.moveaxis(samples, 0, 1)
+
+    # Bucket them into the standard isotropic normal
+    freqs = []
+    for i in range(len(mu)):
+        freq, _ = np.histogram(samples[i], bins=norm_bins(quant_bits))
+        freqs.append(freq * (1 << (quant_bits - sample_bits)))
+    return freqs
+
+
+def decode_y(stack, mu=None, log_var=None, latent_size=50, quant_bits=16):
+    assert mu is None or len(mu.shape) == 1
+    assert mu is None or mu.shape == log_var.shape
     alphabet = list(range(1 << quant_bits))
-    freqs = [1] * (1 << quant_bits)
-    cdf = np.cumsum(freqs)
-    cdf = np.insert(cdf, 0, 0).astype(np.uint64)
-    locs = mu
-    scales = np.exp(log_var)
+
+    if mu is None:
+        # We're trying to decode a standard isotropic normal, so freq buckets are all
+        # equal-probable
+        assert log_var is None
+        freq = [1] * (1 << quant_bits)
+        cdf = np.cumsum(freq)
+        cdf = np.insert(cdf, 0, 0).astype(np.uint64)
+    else:
+        assert log_var is not None
+        freqs = quantize_y_distribution(mu, log_var)
+        cdfs = np.cumsum(freqs, axis=1)
+        cdfs = np.insert(cdfs, 0, 0, axis=1).astype(np.uint64)
 
     # decode whatever bits on the stack interpreting them to
-    # be quantizations of equal width bins of N(mu, log_var) pdf
+    # be quantizations of equal width bins of standard isotropic normal
     symbols = []
-    for i in range(len(locs)):
-        stack, s = decode_rans(stack, alphabet, freqs, cdf)
+    for i in reversed(range(latent_size)):
+        stack, s = decode_rans(stack, alphabet,
+                               freq if mu is None else freqs[i],
+                               cdf if mu is None else cdfs[i])
         symbols.append(s)
     symbols = list(reversed(symbols))
 
-    # Convert quantization index to actual continuous value
-    y = norm.ppf(np.array(symbols) * 1. / (1 << quant_bits), locs, scales)
-    return stack, y
+    return stack, symbols
 
 
-def encode_y(quant_y, stack, quant_bits=16):
-    ''' Encode quantized y indicies for isotropic normals pdfs
+def encode_y(indexes, stack, mu=None, log_var=None, quant_bits=16):
+    ''' Encode quantized y indicies for standard isotropic normals pdfs
 
-        quant_y - indexes of y into isotropic norm bins via quantize_y()
+        indexes - indexes of y into standard isotropic norm bins
         stack - existing stack of coded symbols
     '''
-    assert len(quant_y.shape) == 1
-
     alphabet = list(range(1 << quant_bits))
-    freqs = [1] * (1 << quant_bits)
-    cdf = np.cumsum(freqs)
-    cdf = np.insert(cdf, 0, 0).astype(np.uint64)
 
-    for s in quant_y:
-        # code y symbols
-        stack = code_rans(s, stack, alphabet, freqs, cdf)
+    if mu is None:
+        # We're trying to decode a standard isotropic normal, so freq buckets are all
+        # equal-probable
+        assert log_var is None
+        freq = [1] * (1 << quant_bits)
+        cdf = np.cumsum(freq)
+        cdf = np.insert(cdf, 0, 0).astype(np.uint64)
+    else:
+        assert log_var is not None
+        freqs = quantize_y_distribution(mu, log_var)
+        cdfs = np.cumsum(freqs, axis=1)
+        cdfs = np.insert(cdfs, 0, 0, axis=1).astype(np.uint64)
+
+    for i, s in enumerate(indexes):
+        stack = code_rans(s, stack, alphabet,
+                          freq if mu is None else freqs[i],
+                          cdf if mu is None else cdfs[i])
 
     return stack
 
 
-def quantize_distribution(pvals, quant_bits=16):
+def quantize_pval_distribution(pvals, quant_bits=16):
     ''' Translate probability distribution into a frequency distribution
         ensuring each bucket has at least one count
         pvals - N x 256 numpy array of 256 pixel values
@@ -114,3 +148,6 @@ def decode_x(freqs, stack):
         result.append(s)
 
     return stack, list(reversed(result))
+
+
+
