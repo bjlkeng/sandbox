@@ -14,7 +14,7 @@ def norm_bins(quant_bits=16):
     return BINS[quant_bits]
 
 
-def quantize_y_distribution(mu, log_var, sample_bits=12, quant_bits=16):
+def quantize_y_distribution(mu, log_var, sample_bits=14, quant_bits=16):
     ''' Quantizes continuous y values into bins of a standard isotropic normal '''
     assert quant_bits >= sample_bits
     # Sample equi-probable width points from the source distribution
@@ -49,7 +49,7 @@ def decode_y(stack, mu=None, log_var=None, latent_size=50, quant_bits=16):
         cdf = np.insert(cdf, 0, 0).astype(np.uint64)
     else:
         assert log_var is not None
-        freqs = quantize_y_distribution(mu, log_var)
+        freqs = quantize_y_distribution(mu, log_var, quant_bits=quant_bits)
         cdfs = np.cumsum(freqs, axis=1)
         cdfs = np.insert(cdfs, 0, 0, axis=1).astype(np.uint64)
 
@@ -69,7 +69,7 @@ def decode_y(stack, mu=None, log_var=None, latent_size=50, quant_bits=16):
 def encode_y(indexes, stack, mu=None, log_var=None, quant_bits=16):
     ''' Encode quantized y indicies for standard isotropic normals pdfs
 
-        indexes - indexes of y into standard isotropic norm bins
+        indexes - indexes of y into norm distributions bins
         stack - existing stack of coded symbols
     '''
     alphabet = list(range(1 << quant_bits))
@@ -83,7 +83,7 @@ def encode_y(indexes, stack, mu=None, log_var=None, quant_bits=16):
         cdf = np.insert(cdf, 0, 0).astype(np.uint64)
     else:
         assert log_var is not None
-        freqs = quantize_y_distribution(mu, log_var)
+        freqs = quantize_y_distribution(mu, log_var, quant_bits=quant_bits)
         cdfs = np.cumsum(freqs, axis=1)
         cdfs = np.insert(cdfs, 0, 0, axis=1).astype(np.uint64)
 
@@ -114,7 +114,7 @@ def quantize_pval_distribution(pvals, quant_bits=16):
     return freqs
 
 
-def encode_x(data, freqs, stack):
+def encode_x(data, freqs, stack, quant_bits=16):
     ''' Encodes the (flattened) image using ANS
 
         data - flattened data
@@ -127,12 +127,12 @@ def encode_x(data, freqs, stack):
         alphabet = list(range(len(freq)))
         cdf = np.cumsum(freq)
         cdf = np.insert(cdf, 0, 0).astype(np.uint64)
-        stack = code_rans(data[i], stack, alphabet, freq, cdf)
+        stack = code_rans(data[i], stack, alphabet, freq, cdf, quant_bits=quant_bits)
 
     return stack
 
 
-def decode_x(freqs, stack):
+def decode_x(freqs, stack, quant_bits=16):
     ''' Decodes the flattened image using ANS
 
         freqs - frequencies for the flattened data
@@ -144,10 +144,7 @@ def decode_x(freqs, stack):
         alphabet = list(range(len(freq)))
         cdf = np.cumsum(freq)
         cdf = np.insert(cdf, 0, 0).astype(np.uint64)
-        stack, s = decode_rans(stack, alphabet, freq, cdf)
+        stack, s = decode_rans(stack, alphabet, freq, cdf, quant_bits=quant_bits)
         result.append(s)
 
-    return stack, list(reversed(result))
-
-
-
+    return stack, np.fromiter(reversed(result), np.float32)
