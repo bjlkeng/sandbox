@@ -88,7 +88,8 @@ class VAE(keras.Model):
         x = layers.Dense(self.latent_dim, activation="relu")(x)
         x = layers.Dense(self.latent_dim, activation="relu")(x)
         z_mean = layers.Dense(self.latent_dim, name="z_mean")(x)
-        z_log_var = layers.Dense(self.latent_dim, name="z_log_var")(x)
+        z_log_var = layers.Dense(self.latent_dim, name="z_log_var",
+                                 kernel_initializer='truncated_normal')(x)
         z = Sampling()([z_mean, z_log_var])
         encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
 
@@ -146,8 +147,7 @@ class VAE(keras.Model):
         kl_loss = tf.reduce_mean(kl_loss)
         kl_loss *= -0.5
 
-        # Putting more weight on kl_loss -- seems to converge a bit more smoothly
-        total_loss = reconstruction_loss + 3 * kl_loss
+        total_loss = reconstruction_loss + kl_loss
 
         return {
             "loss": total_loss,
@@ -255,7 +255,7 @@ def pixelcnn_loss(target, output, img_rows, img_cols, img_chns, n_components):
                                         K.log(K.maximum(cdfplus_safe - cdfminus_safe, 1e-12)),
                                         edge_case)))
 
-    # x_weights * [sigma(x+0.5...) - sigma(x-0.5 ...) ]
+    # log(x_weights * [sigma(x+0.5...) - sigma(x-0.5 ...) ])
     # = log x_weights + log (...)
     # Compute log(softmax(.)) directly here, instead of doing 2-step to avoid overflow
     pre_result = logsoftmax(x_logit_weights) + log_ll

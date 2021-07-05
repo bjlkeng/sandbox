@@ -34,7 +34,7 @@ def code_rans(symbol, stack, alphabet, freqs, cdf=None, quant_bits=16, renorm_bi
         codes = []
         code = 1
     else:
-        codes = stack.copy()
+        codes = stack
         code = int(codes.pop())
 
     if DEBUG:
@@ -113,7 +113,9 @@ def decode_rans(stack, alphabet, freqs, cdf=None, quant_bits=16, renorm_bits=32)
         if DEBUG:
             print(pcode, ' -> ', code)
 
-        assert (0 < codes[-1] < pcode or len(codes) < plen), (codes[-1], len(codes))
+        assert (0 < codes[-1] < pcode or len(codes) < plen
+                or (pcode == codes[-1] and freqs[index] == (1 << quant_bits))), \
+            (pcode, codes[-1], plen, len(codes), index, freqs[index], cdf[index])
         return codes, symbol
     else:
         return [], None
