@@ -15,4 +15,4 @@ Some blog posts relating to things in here:
 * `notebooks/vae-importance_sampling`: http://bjlkeng.github.io/posts/importance-sampling-and-estimating-marginal-likelihood-in-variational-autoencoders/
 * `notebooks/pixel_cnn`: http://bjlkeng.github.io/posts/pixelcnn/
 * `ans`: https://bjlkeng.github.io/posts/lossless-compression-with-asymmetric-numeral-systems/
-
+* `hmc`: https://bjlkeng.github.io/posts/hamiltonian-monte-carlo/
