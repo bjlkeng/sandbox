@@ -1,0 +1,41 @@
+Here are summaries for the articles in question:
+
+**About**
+The page provides different introductions of the author based on contexts. Professionally, the author is a Research Director at BorealisAI and an Adjunct Professor of Data Science at the Rotman School of Management, University of Toronto. Personally, the author has lived in the Greater Toronto Area, speaks English and some Mandarin, plays guitar, and enjoys various sports such as badminton. The author has diverse interests in subjects like computers, technology, economics, and more. Philosophically, the author values simplicity and flexibility. Academically, the author has a strong background with a PhD and MASc in Electrical and Computer Engineering from the University of Toronto, and a BASc from the University of Waterloo. The author has experience in developing AI techniques for hardware design automation and has taught data structures and algorithms.
+
+**Reading List**
+The section provides a curated list of recommended books categorized into Ideas, Lessons/Skills, Biographies, Economics/Business/Wealth/Innovation, Technical, and Interest. These books are considered great reads by the author and include titles like "Outliers" by Malcolm Gladwell, "How to Win Friends and Influence People" by Dale Carnegie, "The Intelligent Investor" by Benjamin Graham, and "The Art and Science of Cold Reading". The list emphasizes spending time on books that are not just good but great and welcomes suggestions for missing titles.
+
+**Publications**
+This section lists the author’s invited talks, presentations, patents, conference papers, journal papers, professional activities, and thesis work. It showcases the author's contributions to the field of data science and AI, including talks on machine learning, decision automation, and AI in retail. Notable patents cover user behavioral segmentation and influencer analysis in social networks, among others. The list of papers and professional activities highlights the author's extensive research and contributions to formal methods in CAD, design verification, and data science for retail.
+
+**2022 Year-In-Review**
+The author reflects on 2022, noting it felt closer to normal despite the pandemic. The year involved fewer big changes, personal and professional productivity, and continued enjoyment of family time, especially with his daughter. The author maintained weight goals and had a calm year but acknowledged struggles with fitness. Professional accomplishments include work at BorealisAI and teaching at Rotman. Investments faced challenges due to market drops but the author remained optimistic. Insights on spending quality time, mindfulness in life choices, and embracing a rich life were shared. The year concluded with a sense of optimism for 2023.
+
+**2021 Year-In-Review**
+In 2021, the pandemic continued, making the year feel like a new normal marked by repetitive days. The author’s primary joy came from spending time with his daughter, despite pandemic restrictions. Professional life saw changes with a new role at BorealisAI and ongoing teaching commitments at Rotman. Personal hobbies, such as music and learning Chinese, took a backseat due to time constraints, with fitness also suffering. Investment strategies were impacted by market fluctuations. The author expressed hopes for improved social connections and fitness routines in 2022 and beyond, emphasizing the need to find balance in life.
+
+**Humility**
+Reflecting on his formative years, the author describes transforming from a cocky top student to a humbled learner. Graduate school and working with smarter colleagues helped instill humility. Mentorship from brilliant peers in graduate school provided valuable learning experiences, fostering career growth. The author emphasizes the joy of working with exceptionally smart people and acknowledges their impact on personal and professional development. The narrative encourages appreciation of shared learning experiences and the importance of being open to learning from others’ expertise.
+
+**2020 Year-In-Review**
+The author recaps significant changes in 2020 with the birth of his daughter and navigating the pandemic. The year also marked buying a house and the acquisition of his startup, Rubikloud, by Kinaxis. Work-life involved stressful but successful due diligence activities. The new role at BorealisAI brought interesting AI projects and new learning opportunities. Teaching at Rotman continued, though impacted by the pandemic. Personal hobbies and fitness saw setbacks, highlighting the challenge of balancing professional and family responsibilities. The review concludes with hopes for a stable and safe 2021.
+
+**Rubikloud Retrospective**
+The author reflects on six years at Rubikloud, emphasizing the importance of people, learning, and managing compressed timelines. Building a startup involved overcoming mistakes and miscalculations. Key factors of success included hiring smart, dedicated individuals, and maintaining resilience through constant learning. The narrative stresses that reaching this milestone involved luck and aligning favorable conditions but ultimately required significant effort and adaptability. The acquisition by Kinaxis marks a new chapter, promising continued growth and AI innovation in the industry.
+
+**Lessons From A Pandemic**
+The pandemic brought significant adjustments, with the first months causing a feeling of loss and disorientation. Focusing on routines, exercise, walking, limiting news consumption, and maintaining human contact helped manage stress and anxiety. Adopting efficient work setups, timely communication, and writing up ideas facilitated better remote working. Insights on sleep, consistency, and relaxation underscore the author's approach to coping and staying productive during an unprecedented global crisis. The reflections aim to offer strategies and advice for navigating similar disruptions in the future.
+
+**2019 Year-In-Review**
+2019 was themed around gaining perspective amidst various professional highs and emotionally challenging lows. Highlights included scaling the data science team at Rubikloud, refining cross-functional team dynamics, and contributing to its growth. The author experienced difficulty maintaining work-life balance during intense project periods, recognizing burnout signs. Teaching at Rotman was fulfilling, and personal hobbies like reading and music saw incremental progress. Key failures included managing multiple cross-functional teams and de-stressing effectively. The year wrapped up with optimism for 2020 and goals to improve personal health and fitness.
+
+**Book Impressions — 2019-Q4**
+The author reviews four books:
+"Tuesdays with Morrie" by Mitch Albom - Re-read provides wisdom on cherishing important aspects like family and love.
+"Models of My Life" by Herbert A. Simon - A re-read of Simon's autobiography, offering insight into his polymath life and contributions to AI and economics.
+"Radical Candor" by Kim Scott - Discusses the importance of honest feedback and personal care in managing teams.
+"Ultralearning" by Scott Young - Explores strategies for rapid and effective learning in various subjects, emphasizing experimentation and direct practice. Recommendations for improving personal learning habits are given.
+
+**Another Apocryphal Story**
+A humorous story about Mozart illustrates the self-sufficiency in pursuing excellence. It explains that those who achieve greatness often take initiative without seeking permission or guidance from others. The narrative conveys the importance of self-motivation and independence in achieving significant accomplishments. It also humorously touches on the futility of asking for advice on unconventional paths like dropping out of school, starting a business, or pursuing unique life choices.
