@@ -1,0 +1,1 @@
+Some experiments with LLM's to see what happens when you keep feeding their output back into them.

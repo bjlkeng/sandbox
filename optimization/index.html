@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Optimization Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui/build/dat.gui.min.js"></script>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script>
+        let scene, camera, renderer, surface, optimizerPath, currentPosition, optimizationAlgorithm;
+        let isAnimating = false;
+        let initX = 1.4, initY = -0.8, learningRate = 0.15;
+        let markers = [];
+        const algorithms = {
+            'Gradient Descent': gradientDescent,
+            'Line Search (Gradient)': lineSearchGradient
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.update();
+
+            // Log camera direction on change
+            controls.addEventListener('change', () => {
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                //console.log('Camera direction:', direction);
+                //console.log('Camera position:', camera.position);
+            });
+            
+            // Create surface
+            const geometry = new THREE.PlaneGeometry(4, 4, 100, 100);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x318DCE,
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide,
+            });
+            
+            // Add texture
+            const textureLoader = new THREE.TextureLoader();
+            const texture = textureLoader.load('https://threejs.org/examples/textures/floors/FloorsCheckerboard_S_Diffuse.jpg');
+            material.map = texture;
+            material.needsUpdate = true;
+
+            surface = new THREE.Mesh(geometry, material);
+            scene.add(surface);
+
+            // Update vertex positions to create a multi-modal surface
+            const positions = surface.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                positions[i + 2] = getZPosition(x, y);
+            }
+            surface.geometry.attributes.position.needsUpdate = true;
+
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
+            scene.add(ambientLight);
+
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(0, 0, 10).normalize();
+            scene.add(directionalLight);
+
+            // Initialize optimizer path
+            const pathGeometry = new THREE.BufferGeometry();
+            const pathMaterial = new THREE.LineBasicMaterial({ color: 0xDCC703 });
+            optimizerPath = new THREE.Line(pathGeometry, pathMaterial);
+            scene.add(optimizerPath);
+
+            // Initialize current position marker
+            const markerGeometry = new THREE.SphereGeometry(0.1);
+            const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xDCC703 });
+            currentPosition = new THREE.Mesh(markerGeometry, markerMaterial);
+            scene.add(currentPosition);
+
+            // GUI for controlling the visualization
+            const gui = new dat.GUI();
+            const params = {
+                initX: initX,
+                initY: initY,
+                learningRate: learningRate,
+                startOptimization: () => {
+                    addMarker(initX, initY, getZPosition(initX, initY));
+                    if (!isAnimating) {
+                        isAnimating = true;
+                        optimizationStep();
+                    }
+                },
+                resetOptimization: () => {
+                    isAnimating = false;
+                    resetOptimizationPath();
+                },
+                resetCamera: () => {
+                    isAnimating = false;
+                    resetCamera();
+                },
+                selectAlgorithm: 'Gradient Descent'
+            };
+            optimizationAlgorithm = algorithms[params.selectAlgorithm];
+            gui.add(params, 'selectAlgorithm', Object.keys(algorithms)).name('Algorithm').onChange(value => {
+                console.log('Selected algorithm:', value);
+                optimizationAlgorithm = algorithms[value];
+            });
+            gui.add(params, 'startOptimization');
+            gui.add(params, 'resetOptimization');
+            gui.add(params, 'resetCamera');
+            gui.add(params, 'initX').onChange(value => {
+                initX = value;
+                resetOptimizationPath();
+            });
+            gui.add(params, 'initY').onChange(value => {
+                initY = value;
+                resetOptimizationPath();
+            });
+            gui.add(params, 'learningRate').onChange(value => {
+                learningRate = value;
+                resetOptimizationPath();
+            });
+            resetOptimizationPath();
+            resetCamera();
+            animate();
+        }
+
+        function addMarker(x, y, z) {
+            const markerGeometry = new THREE.SphereGeometry(0.03);
+            const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            marker.position.set(x, y, z);
+            scene.add(marker);
+            markers.push(marker);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        function resetCamera() {
+            // Add orbit controls for camera rotation
+            camera.position.set(-2.5, 1.07, 2.0);
+            camera.up.set(0, 0, 1);
+            camera.lookAt(0.69, -.40, .60);
+        }
+
+        function resetOptimizationPath() {
+            optimizerPath.geometry.setFromPoints([]);
+            currentPosition.position.set(initX, initY, getZPosition(initX, initY));
+            // clear markers
+            markers.forEach(marker => scene.remove(marker));
+            markers = [];
+        }
+
+        function getZPosition(x, y) {
+            return Math.sin(x) * Math.cos(y) + Math.cos(2 * x) * Math.sin(2 * y);
+        }
+
+        function gradientDescent(currentPos) {
+            // Simple gradient descent
+            const dx = Math.cos(currentPos.x) * Math.cos(currentPos.y) - 2 * Math.sin(2 * currentPos.x) * Math.sin(2 * currentPos.y);
+            const dy = -Math.sin(currentPos.x) * Math.sin(currentPos.y) + 2 * Math.cos(2 * currentPos.x) * Math.cos(2 * currentPos.y);
+            
+            return {
+                x: currentPos.x - learningRate * dx,
+                y: currentPos.y - learningRate * dy
+            };
+        }
+
+        function lineSearchGradient(currentPos, N = 40) {
+            // Simple line search via gradient descent
+            const dx = Math.cos(currentPos.x) * Math.cos(currentPos.y) - 2 * Math.sin(2 * currentPos.x) * Math.sin(2 * currentPos.y);
+            const dy = -Math.sin(currentPos.x) * Math.sin(currentPos.y) + 2 * Math.cos(2 * currentPos.x) * Math.cos(2 * currentPos.y);
+
+            newPos = { x: currentPos.x, y: currentPos.y };
+            minPos = newPos;
+            minZ = currentPos.z;
+            for (let i = 0; i < N; i++) {
+              newPos = {
+                x: newPos.x - learningRate * dx,
+                y: newPos.y - learningRate * dy
+              };
+              const newZ = getZPosition(newPos.x, newPos.y);
+              if (newZ < minZ) {
+                minPos = { x: newPos.x, y: newPos.y };
+                minZ = newZ;
+              } else {
+                break;
+              }
+            }
+            
+            return minPos;
+        }
+
+
+        function optimizationStep() {
+            if (!isAnimating) return;
+
+            const currentPos = currentPosition.position;
+            const newPos = optimizationAlgorithm(currentPos);
+
+            if (Math.abs(currentPos.x - newPos.x) < 0.01 && Math.abs(currentPos.y - newPos.y) < 0.01) {
+                isAnimating = false;
+                console.log('Optimization finished');
+                return;
+            }
+            
+            currentPos.x = newPos.x;
+            currentPos.y = newPos.y;
+            currentPos.z = getZPosition(newPos.x, newPos.y);
+            addMarker(currentPos.x, currentPos.y, currentPos.z);
+
+            const pathPoints = optimizerPath.geometry.getAttribute('position').array;
+            const newPathPoints = [...pathPoints, currentPos.x, currentPos.y, currentPos.z];
+            optimizerPath.geometry.setAttribute('position', new THREE.Float32BufferAttribute(newPathPoints, 3));
+
+            setTimeout(optimizationStep, 100);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+
+        init();
+    </script>
+</body>
+</html>
