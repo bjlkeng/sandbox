@@ -16,11 +16,12 @@
     <script>
         let scene, camera, renderer, surface, optimizerPath, currentPosition, optimizationAlgorithm;
         let isAnimating = false;
-        let initX = 1.4, initY = -0.8, learningRate = 0.15;
+        let initX = 1.4, initY = -0.8, learningRate = 0.15, iteration = 0;
         let markers = [];
+        let memory = {};
         const algorithms = {
             'Gradient Descent': gradientDescent,
-            'Line Search (Gradient)': lineSearchGradient
+            'Nonlinear Conjugate Gradient': nonlinearConjugateGradient
         };
 
         function init() {
@@ -37,8 +38,6 @@
             controls.addEventListener('change', () => {
                 const direction = new THREE.Vector3();
                 camera.getWorldDirection(direction);
-                //console.log('Camera direction:', direction);
-                //console.log('Camera position:', camera.position);
             });
             
             // Create surface
@@ -107,7 +106,6 @@
                     resetOptimizationPath();
                 },
                 resetCamera: () => {
-                    isAnimating = false;
                     resetCamera();
                 },
                 selectAlgorithm: 'Gradient Descent'
@@ -116,6 +114,7 @@
             gui.add(params, 'selectAlgorithm', Object.keys(algorithms)).name('Algorithm').onChange(value => {
                 console.log('Selected algorithm:', value);
                 optimizationAlgorithm = algorithms[value];
+                resetOptimizationPath();
             });
             gui.add(params, 'startOptimization');
             gui.add(params, 'resetOptimization');
@@ -159,11 +158,14 @@
         }
 
         function resetOptimizationPath() {
+            isAnimating = false;
+            iteration = 0;
             optimizerPath.geometry.setFromPoints([]);
             currentPosition.position.set(initX, initY, getZPosition(initX, initY));
             // clear markers
             markers.forEach(marker => scene.remove(marker));
             markers = [];
+            memory = {};
         }
 
         function getZPosition(x, y) {
@@ -181,31 +183,41 @@
             };
         }
 
-        function lineSearchGradient(currentPos, N = 40) {
-            // Simple line search via gradient descent
+        function nonlinearConjugateGradient(currentPos, N = 40) {
+            // Compute gradients
             const dx = Math.cos(currentPos.x) * Math.cos(currentPos.y) - 2 * Math.sin(2 * currentPos.x) * Math.sin(2 * currentPos.y);
             const dy = -Math.sin(currentPos.x) * Math.sin(currentPos.y) + 2 * Math.cos(2 * currentPos.x) * Math.cos(2 * currentPos.y);
 
-            newPos = { x: currentPos.x, y: currentPos.y };
-            minPos = newPos;
-            minZ = currentPos.z;
-            for (let i = 0; i < N; i++) {
-              newPos = {
-                x: newPos.x - learningRate * dx,
-                y: newPos.y - learningRate * dy
-              };
-              const newZ = getZPosition(newPos.x, newPos.y);
-              if (newZ < minZ) {
-                minPos = { x: newPos.x, y: newPos.y };
-                minZ = newZ;
-              } else {
-                break;
-              }
+            if (Object.keys(memory).length === 0) {
+                // Initial conditions
+                var cgdx = -dx;
+                var cgdy = -dy;
+            } else {
+                // Compute beta via Polak-Ribiere method
+                const beta = Math.max(0, ((dx * (dx - memory['cgdx']) + dy * (dy - memory['cgdy']))
+                                          / (memory['cgdx'] * memory['cgdx'] + memory['cgdy'] * memory['cgdy'])));
+
+                // Compute approximate gradients
+                var cgdx = -dx + beta * memory['cgdx'];
+                var cgdy = -dy + beta * memory['cgdy'];
             }
-            
-            return minPos;
+
+            let nextPos = backtrackingLineSearch(currentPos, cgdx, cgdy, learningRate);
+            memory['cgdx'] = cgdx;
+            memory['cgdy'] = cgdy;
+
+            return nextPos;
         }
 
+        function backtrackingLineSearch(currentPos, dx, dy, alpha, p=0.5, beta=1e-4) {
+            z = getZPosition(currentPos.x, currentPos.y);
+            let newPos = { x: currentPos.x, y: currentPos.y };
+            while (getZPosition(newPos.x + alpha * dx, newPos.y + alpha * dy) 
+                   > z + beta * alpha * (dx * dx + dy * dy)) {
+                var alpha = alpha * p;
+            }
+            return { x: newPos.x + alpha * dx, y: newPos.y + alpha * dy };
+        }
 
         function optimizationStep() {
             if (!isAnimating) return;
@@ -213,9 +225,14 @@
             const currentPos = currentPosition.position;
             const newPos = optimizationAlgorithm(currentPos);
 
-            if (Math.abs(currentPos.x - newPos.x) < 0.01 && Math.abs(currentPos.y - newPos.y) < 0.01) {
+            if (Math.abs(currentPos.x - newPos.x) < 0.001 && Math.abs(currentPos.y - newPos.y) < 0.001) {
                 isAnimating = false;
-                console.log('Optimization finished');
+                // display final position and number of iterations
+                console.log('Optimization finished:', currentPos, 'with', iteration, 'iterations');
+                return;
+            } else if (iteration > 50) {
+                isAnimating = false;
+                console.log('Optimization terminated at max iterations:', currentPos, 'with', iteration, 'iterations');
                 return;
             }
             
@@ -228,6 +245,7 @@
             const newPathPoints = [...pathPoints, currentPos.x, currentPos.y, currentPos.z];
             optimizerPath.geometry.setAttribute('position', new THREE.Float32BufferAttribute(newPathPoints, 3));
 
+            iteration++;
             setTimeout(optimizationStep, 100);
         }
 
