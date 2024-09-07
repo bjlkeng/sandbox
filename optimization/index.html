@@ -21,7 +21,11 @@
         let memory = {};
         const algorithms = {
             'Gradient Descent': gradientDescent,
-            'Nonlinear Conjugate Gradient': nonlinearConjugateGradient
+            'Nonlinear Conjugate Gradient': nonlinearConjugateGradient,
+            'Nesterov Momentum': nesterovMomentum,
+            'RMSProp': rmsProp,
+            'Adam': adam,
+            'Hypergradient Descent': hypergradientDescent
         };
 
         function init() {
@@ -159,7 +163,7 @@
 
         function resetOptimizationPath() {
             isAnimating = false;
-            iteration = 0;
+            iteration = 1;
             optimizerPath.geometry.setFromPoints([]);
             currentPosition.position.set(initX, initY, getZPosition(initX, initY));
             // clear markers
@@ -172,10 +176,20 @@
             return Math.sin(x) * Math.cos(y) + Math.cos(2 * x) * Math.sin(2 * y);
         }
 
-        function gradientDescent(currentPos) {
-            // Simple gradient descent
+        function getGradient(currentPos) {
             const dx = Math.cos(currentPos.x) * Math.cos(currentPos.y) - 2 * Math.sin(2 * currentPos.x) * Math.sin(2 * currentPos.y);
             const dy = -Math.sin(currentPos.x) * Math.sin(currentPos.y) + 2 * Math.cos(2 * currentPos.x) * Math.cos(2 * currentPos.y);
+            return {
+                x: dx,
+                y: dy
+            };
+        }
+
+        function gradientDescent(currentPos) {
+            // Simple gradient descent
+            const gradient = getGradient(currentPos);
+            const dx = gradient.x;
+            const dy = gradient.y;
             
             return {
                 x: currentPos.x - learningRate * dx,
@@ -185,8 +199,9 @@
 
         function nonlinearConjugateGradient(currentPos, N = 40) {
             // Compute gradients
-            const dx = Math.cos(currentPos.x) * Math.cos(currentPos.y) - 2 * Math.sin(2 * currentPos.x) * Math.sin(2 * currentPos.y);
-            const dy = -Math.sin(currentPos.x) * Math.sin(currentPos.y) + 2 * Math.cos(2 * currentPos.x) * Math.cos(2 * currentPos.y);
+            const gradient = getGradient(currentPos);
+            const dx = gradient.x;
+            const dy = gradient.y;
 
             if (Object.keys(memory).length === 0) {
                 // Initial conditions
@@ -207,6 +222,97 @@
             memory['cgdy'] = cgdy;
 
             return nextPos;
+        }
+
+        function nesterovMomentum(currentPos, beta=0.9) {
+            if (Object.keys(memory).length === 0) {
+                // Initial momentum
+                memory['vx'] = 0;
+                memory['vy'] = 0;
+            }
+            projPos = {
+                x: currentPos.x + beta * memory['vx'],
+                y: currentPos.y + beta * memory['vy']
+            }
+            const grad = getGradient(projPos);
+            const v = {
+                x: beta * memory['vx'] - learningRate * grad.x,
+                y: beta * memory['vy'] - learningRate * grad.y
+            }
+            memory['vx'] = v.x;
+            memory['vy'] = v.y;
+
+            return {
+                x: currentPos.x + v.x,
+                y: currentPos.y + v.y
+            };
+        }
+
+        function rmsProp(currentPos, gamma=0.9, eps=1e-8) {
+            if (Object.keys(memory).length === 0) {
+                // Initial momentum
+                memory['sx'] = 0;
+                memory['sy'] = 0;
+            }
+            
+            const grad = getGradient(currentPos);
+            const s = {
+                x: gamma * memory['sx'] + (1 - gamma) * grad.x * grad.x,
+                y: gamma * memory['sy'] + (1 - gamma) * grad.y * grad.y
+            }
+            memory['sx'] = s.x;
+            memory['sy'] = s.y;
+
+            return {
+                x: currentPos.x - learningRate * grad.x / (eps + Math.sqrt(s.x)),
+                y: currentPos.y - learningRate * grad.y / (eps + Math.sqrt(s.y))
+            };
+        }
+        
+        function adam(currentPos, beta1=0.7, beta2=0.9, eps=1e-8) {
+            if (Object.keys(memory).length === 0) {
+                // Initial momentum
+                memory['m'] = { x: 0, y: 0 };
+                memory['v'] = { x: 0, y: 0 };
+            }
+            
+            const grad = getGradient(currentPos);
+            memory['m'] = {
+                x: beta1 * memory['m'].x + (1 - beta1) * grad.x,
+                y: beta1 * memory['m'].y + (1 - beta1) * grad.y
+            };
+            memory['v'] = {
+                x: beta2 * memory['v'].x + (1 - beta2) * grad.x * grad.x,
+                y: beta2 * memory['v'].y + (1 - beta2) * grad.y * grad.y
+            };
+            const mHat = {
+                x: memory['m'].x / (1 - Math.pow(beta1, iteration)),
+                y: memory['m'].y / (1 - Math.pow(beta1, iteration))
+            };
+            const vHat = {
+                x: memory['v'].x / (1 - Math.pow(beta2, iteration)),
+                y: memory['v'].y / (1 - Math.pow(beta2, iteration))
+            };
+
+            return {
+                x: currentPos.x - learningRate * mHat.x / (eps + Math.sqrt(vHat.x)),
+                y: currentPos.y - learningRate * mHat.y / (eps + Math.sqrt(vHat.y))
+            };
+        }
+
+        function hypergradientDescent(currentPos, hypergradient_lr=0.01) {
+            if (Object.keys(memory).length === 0) {
+                // Initial momentum
+                memory['alpha'] = learningRate;
+                memory['g'] = { x: 0, y: 0 };
+            }
+            const grad = getGradient(currentPos);
+            memory['alpha'] = memory['alpha'] + hypergradient_lr * (grad.x * memory['g'].x + grad.y * memory['g'].y);
+            memory['g'] = { x: grad.x, y: grad.y };
+            return {
+                x: currentPos.x - memory['alpha'] * grad.x,
+                y: currentPos.y - memory['alpha'] * grad.y
+            }
         }
 
         function backtrackingLineSearch(currentPos, dx, dy, alpha, p=0.5, beta=1e-4) {
