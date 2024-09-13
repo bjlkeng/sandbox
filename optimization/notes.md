@@ -1,3 +1,10 @@
+# 2024-09-12
+* Ask Github CoPilot to generate Hessian of my function and it got it wrong!  Asked gpt-1o and it got it right!
+* Using gpt-1o to help debug my Hessian (and compute it)!  I was able to give it the original numerical point, and it computed the gradient, hessian, inverse hessian and it matched my results!
+* Next I asked it to do Newton's method on the original point and let's see what it gives me, and it matches!
+* I just realized, Netwon's method is good at finding zero's of the gradient == local min OR max.  The algorithm was moving to find the maxima instead of minima!
+* If the Hessian is not positive definite, it's not going to work!  That's why you can't use Newton's method straight up.  You need to ensure that it's a descent direction.
+
 # 2024-09-06
 * Last time added conjugate gradient descent
 * Added a Nesterov, RMSProp, Adam, Hypergradient Descent

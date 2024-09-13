@@ -25,7 +25,8 @@
             'Nesterov Momentum': nesterovMomentum,
             'RMSProp': rmsProp,
             'Adam': adam,
-            'Hypergradient Descent': hypergradientDescent
+            'Hypergradient Descent': hypergradientDescent,
+            'Newton': newton,
         };
 
         function init() {
@@ -185,6 +186,40 @@
             };
         }
 
+        function getRegularizedInvHessian(currentPos, regularizer) {
+            // Hessian of Math.sin(x) * Math.cos(y) + Math.cos(2 * x) * Math.sin(2 * y)
+            const hessian = [
+                [-Math.sin(currentPos.x) * Math.cos(currentPos.y) - 4 * Math.cos(2 * currentPos.x) * Math.sin(2 * currentPos.y), 
+                 -Math.cos(currentPos.x) * Math.sin(currentPos.y) - 4 * Math.sin(2 * currentPos.x) * Math.cos(2 * currentPos.y)],
+                [-Math.cos(currentPos.x) * Math.sin(currentPos.y) - 4 * Math.sin(2 * currentPos.x) * Math.cos(2 * currentPos.y),
+                 -Math.sin(currentPos.x) * Math.cos(currentPos.y) - 4 * Math.cos(2 * currentPos.x) * Math.sin(2 * currentPos.y)]
+            ];
+
+            function isPositiveDefinite(matrix) {
+                return matrix[0][0] > 0 && matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0] > 0;
+            }
+
+            // Regularize Hessian matrix
+            let count = 0;
+            while (!isPositiveDefinite(hessian) && count < 100) {
+                // Add regularization term
+                hessian[0][0] += regularizer;
+                hessian[1][1] += regularizer;
+                count++;
+            }
+
+            if (!isPositiveDefinite(hessian)) {
+                // output error
+                console.error('Hessian is not positive definite');
+            }
+
+            const invDet = 1 / (hessian[0][0] * hessian[1][1] - hessian[0][1] * hessian[1][0]);
+            return [
+                [invDet * hessian[1][1], -invDet * hessian[0][1]],
+                [-invDet * hessian[1][0], invDet * hessian[0][0]]
+            ]
+        }
+
         function gradientDescent(currentPos) {
             // Simple gradient descent
             const gradient = getGradient(currentPos);
@@ -313,6 +348,21 @@
                 x: currentPos.x - memory['alpha'] * grad.x,
                 y: currentPos.y - memory['alpha'] * grad.y
             }
+        }
+
+        function newton(currentPos) {
+            const grad = getGradient(currentPos);
+            const hessian = getRegularizedInvHessian(currentPos, 0.00);
+
+            // Newton's method
+            const dir = {
+                x: hessian[0][0] * grad.x + hessian[0][1] * grad.y,
+                y: hessian[1][0] * grad.x + hessian[1][1] * grad.y
+            }
+            return {
+                x: currentPos.x - dir.x,
+                y: currentPos.y - dir.y
+            };
         }
 
         function backtrackingLineSearch(currentPos, dx, dy, alpha, p=0.5, beta=1e-4) {
