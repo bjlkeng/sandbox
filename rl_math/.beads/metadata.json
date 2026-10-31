@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "rlmath",
+  "project_id": "5788141e-08a6-4d8f-ae08-a96dcc0a7cf8"
+}
