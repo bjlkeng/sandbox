@@ -10,7 +10,10 @@ from collections.abc import Sequence
 def discounted_returns(rewards: Sequence[float], gamma: float = 1.0) -> list[float]:
     """Compute G_t = r_{t+1} + gamma * G_{t+1}, starting with G_T = 0.
 
-    Return one value per action, including the final transition's reward.
+    Return [G_0, ..., G_{T-1}], where G_t sums the remaining rewards from
+    action t through termination, with discounting relative to time t.
+    For rewards=[1, 2, 3] and gamma=0.5, return [2.75, 3.5, 3.0]:
+    G_0 = 1 + gamma*2 + gamma**2*3, G_1 = 2 + gamma*3, and G_2 = 3.
     An empty episode/terminal tail returns []; its total return is zero.
     gamma must lie in [0, 1]. The input sequence is left unchanged.
     """
