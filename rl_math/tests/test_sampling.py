@@ -1,9 +1,9 @@
 """Policy probabilities, complete episode boundaries, and independent noise."""
 
-import math
 import random
-from statistics import mean, pvariance
 import unittest
+
+import numpy as np
 
 from envs import Action, Gridworld, State
 from returns import discounted_returns
@@ -19,24 +19,26 @@ def east_policy(world):
 class PolicyTests(unittest.TestCase):
     def test_worked_logits_and_action_order(self):
         state = State((0, 0), 2)
-        policy = TabularSoftmaxPolicy({state: [math.log(x) for x in (1, 2, 3, 4)]})
+        row = np.log([1, 2, 3, 4])
+        policy = TabularSoftmaxPolicy({state: row})
+        row[:] = 0  # Caller-owned arrays must not change the policy after construction.
         self.assertEqual(tuple(Action), (Action.NORTH, Action.EAST, Action.SOUTH, Action.WEST))
-        for actual, expected in zip(policy.probabilities(state), (0.1, 0.2, 0.3, 0.4)):
-            self.assertAlmostEqual(actual, expected)
-        self.assertAlmostEqual(sum(policy.probabilities(state)), 1.0)
+        self.assertIsInstance(policy.probabilities(state), np.ndarray)
+        np.testing.assert_allclose(policy.probabilities(state), [0.1, 0.2, 0.3, 0.4])
+        self.assertAlmostEqual(policy.probabilities(state).sum(), 1.0)
 
     def test_stable_softmax_and_time_specific_rows(self):
         early, late = State((0, 0), 2), State((0, 0), 1)
         policy = TabularSoftmaxPolicy({early: (1000, 1001, 1002, 1003), late: (0, 0, 0, 0)})
         shifted = TabularSoftmaxPolicy({early: (0, 1, 2, 3)})
-        self.assertEqual(policy.probabilities(early), shifted.probabilities(early))
-        self.assertEqual(policy.probabilities(late), (0.25,) * 4)
-        self.assertNotEqual(policy.probabilities(early), policy.probabilities(late))
+        np.testing.assert_allclose(policy.probabilities(early), shifted.probabilities(early))
+        np.testing.assert_allclose(policy.probabilities(late), [0.25] * 4)
+        self.assertFalse(np.allclose(policy.probabilities(early), policy.probabilities(late)))
 
     def test_invalid_rows_and_missing_state(self):
         state = State((0, 0), 1)
-        for row in ((), (0, 0, 0), (0,) * 5, (0, 0, 0, math.nan),
-                    (0, 0, 0, math.inf), (0, 0, 0, -math.inf)):
+        for row in ((), (0, 0, 0), (0,) * 5, [[0] * 4], (0, 0, 0, np.nan),
+                    (0, 0, 0, np.inf), (0, 0, 0, -np.inf)):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 TabularSoftmaxPolicy({state: row})
         with self.assertRaises(KeyError):
@@ -79,9 +81,11 @@ class SamplingTests(unittest.TestCase):
         world = Gridworld()
         policy = TabularSoftmaxPolicy({s: (0, 1, 0, 0) for s in world.states()})
         global_state = random.getstate()
+        numpy_global_state = np.random.get_state()
         first = sample_episode(world, policy, seed=42, reward_noise_std=2)
         self.assertEqual(first, sample_episode(world, policy, seed=42, reward_noise_std=2))
         self.assertEqual(random.getstate(), global_state)
+        np.testing.assert_equal(np.random.get_state(), numpy_global_state)
         self.assertNotEqual(first.steps,
                             sample_episode(world, policy, seed=43, reward_noise_std=2).steps)
         for t, step in enumerate(first.steps):
@@ -130,22 +134,20 @@ class SamplingTests(unittest.TestCase):
         samples = [sample_episode(world, policy, seed=seed, reward_noise_std=2)
                    for seed in range(2000)]
         # The deterministic path pays -6 then -1 before the added noise.
-        first = [e.steps[0].reward + 6 for e in samples]
-        second = [e.steps[1].reward + 1 for e in samples]
+        noise = np.array([[step.reward for step in e.steps] for e in samples]) - [-6, -1]
         # Broad, fixed-seed Monte Carlo tolerances: six standard errors.
-        for values in (first, second):
-            self.assertLess(abs(mean(values)), 6 * 2 / math.sqrt(len(samples)))
-            self.assertLess(abs(pvariance(values) - 4), 6 * 4 * math.sqrt(2 / len(samples)))
-        covariance = mean(a * b for a, b in zip(first, second)) - mean(first) * mean(second)
-        self.assertLess(abs(covariance), 6 * 4 / math.sqrt(len(samples)))
+        self.assertTrue(np.all(np.abs(noise.mean(axis=0)) < 6 * 2 / np.sqrt(len(samples))))
+        self.assertTrue(np.all(np.abs(noise.var(axis=0) - 4) < 6 * 4 * np.sqrt(2 / len(samples))))
+        covariance = np.cov(noise, rowvar=False, ddof=0)[0, 1]
+        self.assertLess(abs(covariance), 6 * 4 / np.sqrt(len(samples)))
 
     def test_invalid_noise_and_seed(self):
         world = Gridworld()
         policy = east_policy(world)
-        for std in (-1, math.nan, math.inf, -math.inf):
+        for std in (-1, np.nan, np.inf, -np.inf):
             with self.subTest(std=std), self.assertRaises(ValueError):
                 sample_episode(world, policy, seed=0, reward_noise_std=std)
-        for seed in (None, 0.5, True, "7"):
+        for seed in (None, -1, 0.5, True, "7"):
             with self.subTest(seed=seed), self.assertRaises(ValueError):
                 sample_episode(world, policy, seed=seed)
 
