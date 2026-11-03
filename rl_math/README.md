@@ -21,11 +21,23 @@ policy-gradient math:
 player. Shared learning algorithms and additional game packages follow the
 layout in [PLAN.md](PLAN.md) as their experiments are implemented.
 
-Install `requirements.txt` in your Python environment. From this directory, run:
+From this directory, create the locked environment and open the worked notebook:
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 -m gridworld.play
+uv sync --locked
+uv run --locked jupyter lab notebooks/01_gridworld.ipynb
+```
+
+The environment includes NumPy, JupyterLab, and the Python kernel. In JupyterLab,
+use the **Python 3 (ipykernel)** kernel and choose **Run All Cells**. In VS Code,
+select this directory's `.venv/bin/python` as the notebook interpreter. The
+`.python-version` file selects Python 3.10; `uv.lock` records exact dependencies.
+
+Run checks or the local player in the same environment:
+
+```bash
+uv run --locked python -m unittest discover -s tests -v
+uv run --locked python -m gridworld.play
 ```
 
 The player is available at <http://127.0.0.1:8000>; use `--port` to choose another port.

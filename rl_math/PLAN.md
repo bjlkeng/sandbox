@@ -326,7 +326,9 @@ phases are implemented:
 rl_math/
   README.md
   PLAN.md
-  requirements.txt
+  pyproject.toml           # Runtime dependencies and notebook tools
+  uv.lock                  # Locked environment
+  .python-version          # Python minor version for reproducibility
   common/
     __init__.py
     policy.py              # Generic discrete-action policy interface

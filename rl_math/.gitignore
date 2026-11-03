@@ -5,3 +5,7 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# uv project environment and shared Python version selection
+.venv/
+!/.python-version
