@@ -315,31 +315,53 @@ so figures can be regenerated without retraining.
 
 ## Suggested directory layout
 
-Create these files as their corresponding phases are implemented:
+Keep environment-independent policy contracts and mathematical helpers in
+`common/`. Put each environment's model, policy implementation, sampling, and
+interactive tools in its own package. Shared learning algorithms belong in
+`algorithms/`; game-specific training and evaluation setup belongs in the
+corresponding game package. Create additional files and packages as their
+phases are implemented:
 
 ```text
 rl_math/
   README.md
   PLAN.md
-  requirements.txt
-  envs.py                  # Custom gridworld and shared environment helpers
-  reinforce.py             # Monte Carlo policy-gradient variants
-  actor_critic.py           # One-step and n-step methods
-  advantages.py             # Shared n-step and GAE target computation
-  ppo.py                    # Clipped surrogate and rollout-batch optimization
-  train.py                 # Common experiment and evaluation entry point
+  pyproject.toml           # Runtime dependencies and notebook tools
+  uv.lock                  # Locked environment
+  .python-version          # Python minor version for reproducibility
+  common/
+    __init__.py
+    policy.py              # Generic discrete-action policy interface
+    returns.py             # Discounted returns and episode-time weights
+  gridworld/
+    __init__.py
+    model.py               # Explicit finite-horizon MDP
+    policy.py              # Tabular softmax over cell/time states
+    sampling.py            # Complete model-based episodes and reward noise
+    play.py                # Local player: python3 -m gridworld.play
+  algorithms/
+    reinforce.py           # Shared Monte Carlo policy-gradient variants
+    actor_critic.py        # Shared one-step and n-step methods
+    advantages.py          # Shared n-step and GAE target computation
+    ppo.py                 # Clipped surrogate and rollout-batch optimization
+  cartpole/
+    train.py               # CartPole experiment setup and evaluation
+  lunarlander/
+    train.py               # LunarLander experiment setup and evaluation
   notebooks/
     01_gridworld.ipynb
     02_cartpole.ipynb
     03_lunarlander.ipynb
   figures/                 # Selected figures for the post
   runs/                    # Generated metrics, checkpoints, and recordings
+  tests/                   # Names identify shared helpers or the target game
 ```
 
 Keep generated training outputs out of Git; retain the small source files,
 experiment configurations, notebooks, and selected publication artifacts.
 Notebooks should explain and visualize experiments, with shared training logic
-in Python modules.
+in Python modules. Run modules and tests with `rl_math` as the working directory;
+notebooks may also run from the repository root or their own directory.
 
 ## Task tracking
 

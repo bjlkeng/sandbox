@@ -3,7 +3,7 @@
 import math
 import unittest
 
-from returns import discounted_returns, reward_to_go_weights
+from common.returns import discounted_returns, reward_to_go_weights
 
 
 class ReturnTests(unittest.TestCase):
