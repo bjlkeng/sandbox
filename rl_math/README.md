@@ -33,6 +33,19 @@ use the **Python 3 (ipykernel)** kernel and choose **Run All Cells**. In VS Code
 select this directory's `.venv/bin/python` as the notebook interpreter. The
 `.python-version` file selects Python 3.10; `uv.lock` records exact dependencies.
 
+When a Tailscale proxy forwards its hostname, include that hostname in Jupyter's
+allowed local names. Replace the example below with the hostname in your browser:
+
+```bash
+uv run --locked jupyter lab notebooks/01_gridworld.ipynb --no-browser \
+  --ServerApp.ip=127.0.0.1 \
+  --ServerApp.local_hostnames='["localhost","your-machine.your-tailnet.ts.net"]'
+```
+
+Point the proxy at Jupyter's loopback address and port. Use Jupyter's login token
+when opening the proxied URL. See the
+[Jupyter hostname setting](https://jupyter-server.readthedocs.io/en/latest/other/full-config.html#ServerApp.local_hostnames).
+
 Run checks or the local player in the same environment:
 
 ```bash
