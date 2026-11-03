@@ -161,9 +161,17 @@ review cycle:
    and any limitations or follow-up.
    Leave the bead `in_progress` and mark it `awaiting-review` with
    `bd update <id> --add-label awaiting-review`.
-9. Hand off the bead ID, change summary, checks, PR URL, and limitations. Stop
-   for the user to review and merge manually. Do not merge the PR, close the
-   bead, or start the next implementation bead as part of this review cycle.
+9. Hand off the bead ID, change summary, checks, PR URL, and limitations.
+   When a PR adds or updates an `.ipynb`, adds or changes a runnable command or
+   server, or requires the user to run anything manually, include exact,
+   copyable commands in both the PR description and final user-facing handoff.
+   Identify the checkout or worktree and working directory. Include environment
+   setup, notebook path and kernel, server URL and port, required flags, and
+   other manual steps as applicable. Check these instructions against the final
+   PR revision and identify any unverified steps. Documentation links and test
+   summaries do not replace the commands.
+   Stop for the user to review and merge manually. Do not merge the PR, close
+   the bead, or start the next implementation bead as part of this review cycle.
 
 ## Merge verification and explicit closure approval
 
