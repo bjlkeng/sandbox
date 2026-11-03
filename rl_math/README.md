@@ -16,4 +16,17 @@ policy-gradient math:
 * Actor-critic, bootstrapping, and n-step advantage estimates.
 * GAE and PPO-Clip as recommended additions to the draft.
 
-Add supporting notebooks and Python code here as the examples take shape.
+`common/` holds the policy interface and return helpers shared across games.
+`gridworld/` holds the explicit model, tabular policy, episode sampler, and local
+player. Shared learning algorithms and additional game packages follow the
+layout in [PLAN.md](PLAN.md) as their experiments are implemented.
+
+Install `requirements.txt` in your Python environment. From this directory, run:
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m gridworld.play
+```
+
+The player is available at <http://127.0.0.1:8000>; use `--port` to choose another port.
+The worked example is in [notebooks/01_gridworld.ipynb](notebooks/01_gridworld.ipynb).

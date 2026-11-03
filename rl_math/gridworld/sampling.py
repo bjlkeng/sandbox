@@ -8,8 +8,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from envs import Action, Gridworld, State
-from policies import Policy
+from gridworld.model import Action, Gridworld, State
+from common.policy import Policy
 
 
 @dataclass(frozen=True)

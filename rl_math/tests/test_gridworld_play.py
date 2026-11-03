@@ -3,8 +3,8 @@
 import random
 import unittest
 
-from envs import Action
-from play_gridworld import Game, render
+from gridworld.model import Action
+from gridworld.play import Game, render
 
 
 class PlayTests(unittest.TestCase):

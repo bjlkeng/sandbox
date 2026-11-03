@@ -1,34 +1,12 @@
-"""Discrete-action policy interface and a NumPy tabular softmax implementation."""
+"""A NumPy tabular softmax policy over gridworld cell/time states."""
 
-from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from typing import Generic, TypeVar
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from envs import Action, State
-
-
-Observation = TypeVar("Observation")
-
-
-class Policy(ABC, Generic[Observation]):
-    """Map an observation to a categorical action distribution.
-
-    Observation can be a gridworld State, a vector, or another representation.
-    The probability vector follows the environment's agreed action order; the
-    gridworld sampler uses NORTH, EAST, SOUTH, WEST. A one-hot vector represents
-    a deterministic policy. Random draws belong to the sampler so it controls
-    reproducibility independently of how probabilities are computed.
-
-    This is an evaluation interface. Learning algorithms update a concrete
-    policy's parameters separately; evaluating or sampling it does not learn.
-    """
-
-    @abstractmethod
-    def probabilities(self, state: Observation) -> NDArray[np.float64]:
-        """Return one finite, nonnegative probability per action, summing to 1."""
+from common.policy import Policy
+from gridworld.model import Action, State
 
 
 class TabularSoftmaxPolicy(Policy[State]):

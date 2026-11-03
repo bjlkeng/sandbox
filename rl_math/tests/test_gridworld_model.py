@@ -3,8 +3,8 @@
 import math
 import unittest
 
-from envs import Action, Gridworld, State, Transition
-from returns import discounted_returns
+from gridworld.model import Action, Gridworld, State, Transition
+from common.returns import discounted_returns
 
 
 class GridworldTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""Play locally: python3 play_gridworld.py [--port 8000], then open the URL.
+"""From rl_math: python3 -m gridworld.play [--port 8000], then open the URL.
 
 Standard library only. One game is shared by all tabs connected to this server.
 """
@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import random
 from urllib.parse import parse_qs
 
-from envs import Action, Gridworld
+from gridworld.model import Action, Gridworld
 
 
 class Game:

@@ -5,10 +5,11 @@ import unittest
 
 import numpy as np
 
-from envs import Action, Gridworld, State
-from policies import Policy, TabularSoftmaxPolicy
-from returns import discounted_returns
-from sampling import sample_episode
+from gridworld.model import Action, Gridworld, State
+from common.policy import Policy
+from gridworld.policy import TabularSoftmaxPolicy
+from common.returns import discounted_returns
+from gridworld.sampling import sample_episode
 
 
 def east_policy(world):
