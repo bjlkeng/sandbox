@@ -6,8 +6,9 @@ import unittest
 import numpy as np
 
 from envs import Action, Gridworld, State
+from policies import Policy, TabularSoftmaxPolicy
 from returns import discounted_returns
-from sampling import TabularSoftmaxPolicy, sample_episode
+from sampling import sample_episode
 
 
 def east_policy(world):
@@ -17,10 +18,18 @@ def east_policy(world):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_policy_requires_a_probability_implementation(self):
+        class IncompletePolicy(Policy[State]):
+            pass
+
+        with self.assertRaisesRegex(TypeError, "probabilities"):
+            IncompletePolicy()
+
     def test_worked_logits_and_action_order(self):
         state = State((0, 0), 2)
         row = np.log([1, 2, 3, 4])
         policy = TabularSoftmaxPolicy({state: row})
+        self.assertIsInstance(policy, Policy)
         row[:] = 0  # Caller-owned arrays must not change the policy after construction.
         self.assertEqual(tuple(Action), (Action.NORTH, Action.EAST, Action.SOUTH, Action.WEST))
         self.assertIsInstance(policy.probabilities(state), np.ndarray)
@@ -46,6 +55,23 @@ class PolicyTests(unittest.TestCase):
 
 
 class SamplingTests(unittest.TestCase):
+    def test_sampler_accepts_a_non_tabular_policy(self):
+        class SafeRoutePolicy(Policy[State]):
+            def probabilities(self, state):
+                action = Action.SOUTH if state.cell[0] == 0 else Action.EAST
+                probabilities = np.zeros(len(Action))
+                probabilities[tuple(Action).index(action)] = 1.0
+                return probabilities
+
+        world = Gridworld(layout=("S#", ".G"), horizon=4, slip=0)
+        episode = sample_episode(world, SafeRoutePolicy(), seed=7)
+        self.assertEqual([s.action for s in episode.steps], [Action.SOUTH, Action.EAST])
+        self.assertEqual([s.next_state for s in episode.steps],
+                         [State((1, 0), 3), State((1, 1), 2)])
+        self.assertEqual([s.reward for s in episode.steps], [-1, 9])
+        self.assertEqual(episode.end_reason, "goal")
+        self.assertTrue(episode.steps[-1].terminated)
+
     def test_goal_episode_has_timestamps_rewards_and_no_absorbing_tail(self):
         world = Gridworld(layout=("SHG",), horizon=4, slip=0)
         episode = sample_episode(world, east_policy(world), seed=7)

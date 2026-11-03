@@ -1,40 +1,15 @@
-"""A tabular softmax policy and seeded complete gridworld episodes.
+"""Seeded complete gridworld episodes from a discrete-action Policy.
 
-NumPy handles probability vectors and random draws. Columns follow tuple(Action):
-NORTH, EAST, SOUTH, WEST. Rows use the full (cell, remaining-time) state.
+NumPy handles random draws. Actions follow tuple(Action): NORTH, EAST, SOUTH,
+WEST. Policies receive the full (cell, remaining-time) state.
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 
 from envs import Action, Gridworld, State
-
-
-class TabularSoftmaxPolicy:
-    """pi(a | s) = exp(logit[s, a]) / sum_b exp(logit[s, b]).
-
-    Copy the supplied rows; each must contain four finite logits. Missing
-    states raise KeyError rather than silently using a different policy.
-    Terminal states need no row because no action is sampled there.
-
-    Example: logits log(1), log(2), log(3), log(4) give probabilities
-    (0.1, 0.2, 0.3, 0.4) in NORTH/EAST/SOUTH/WEST order.
-    """
-
-    def __init__(self, logits: Mapping[State, ArrayLike]):
-        self.logits = {state: np.array(row, dtype=float, copy=True) for state, row in logits.items()}
-        if any(row.shape != (len(Action),) or not np.isfinite(row).all()
-               for row in self.logits.values()):
-            raise ValueError("each policy row must contain four finite logits")
-
-    def probabilities(self, state: State) -> NDArray[np.float64]:
-        row = self.logits[state]
-        # Subtracting a constant leaves softmax unchanged and avoids overflow.
-        weights = np.exp(row - row.max())
-        return weights / weights.sum()
+from policies import Policy
 
 
 @dataclass(frozen=True)
@@ -70,7 +45,7 @@ class Episode:
 
 def sample_episode(
     world: Gridworld,
-    policy: TabularSoftmaxPolicy,
+    policy: Policy[State],
     *,
     seed: int,
     reward_noise_std: float = 0.0,
