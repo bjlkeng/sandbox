@@ -1,33 +1,25 @@
-"""Exact tabular logit derivatives by reversing the Bellman computation."""
+"""Exact tabular policy gradients through PyTorch's Bellman computation graph."""
 
 from dataclasses import dataclass
 
-import numpy as np
-from numpy.typing import NDArray
+import torch
+from torch import Tensor
 
-from gridworld.model import Action, Gridworld, State
+from gridworld.model import Gridworld, State
 from gridworld.policy import TabularSoftmaxPolicy
 from gridworld.values import PolicyValues, evaluate_policy
 
 
 @dataclass(frozen=True)
 class PolicyGradient:
-    """Snapshot of exact values, dJ/dlogits, and reverse-pass value weights.
+    """Exact values and dJ/dlogits in NORTH/EAST/SOUTH/WEST action order.
 
-    Gradient keys match policy.logits, in NORTH/EAST/SOUTH/WEST action order.
-    Each cell/time row is an independent parameter, even when rows have equal
-    logits. Unreachable and optional terminal parameter rows have zero gradient.
-    No policy parameters are changed.
-
-    For nonterminal s, value_weights[s] = dJ/dV(s) in the Bellman computation
-    = gamma**t * Pr(s_t=s), where t = horizon - s.remaining. These weights
-    include the episode discount; they are not normalized visitation counts.
-    Terminal values are constants, so their reverse weights are kept at zero.
+    Gradient keys match policy.logits. Each cell/time row is an independent
+    parameter; unreachable and optional terminal rows have zero gradient.
     """
 
     values: PolicyValues
-    gradient: dict[State, NDArray[np.float64]]
-    value_weights: dict[State, float]
+    gradient: dict[State, Tensor]
 
 
 def differentiate_policy(
@@ -35,43 +27,16 @@ def differentiate_policy(
     policy: TabularSoftmaxPolicy,
     gamma: float = 1.0,
 ) -> PolicyGradient:
-    """Differentiate J = V(start_state) through the finite Bellman graph.
+    """Differentiate J = V(start_state) without changing logits or their .grad.
 
-    First evaluate V and Q with evaluate_policy. Then reverse its order:
-    horizon, horizon-1, ..., 1. Start with w(start)=1 and all other w=0.
-    The chain rule through V(s) = sum_a pi(a|s) Q(s,a) gives
-
-        dJ/dtheta[s,b] = w(s) * pi(b|s) * [Q(s,b) - V(s)]
-        w(s') += w(s) * gamma * sum_a pi(a|s) P(s'|s,a).
-
-    The first line uses d pi(a)/d theta[b] = pi(a) * (1[a=b] - pi(b)).
-    The second follows the dependency of Q on successor values. Accumulate
-    all predecessor contributions before processing a successor's row.
-    Goal and horizon values are fixed at zero, with no derivative to pass on.
-
-    This is an analytic reverse derivative of the value computation, using
-    NumPy without an autodiff dependency. Transition probabilities and reward
-    means are fixed; independent zero-mean reward noise affects neither J nor
-    its gradient. gamma must lie in [0, 1]. There is no sampling or update.
+    Autograd follows logits -> softmax -> Bellman expectations -> J. The gamma
+    factors in those expectations retain all episode discount weights; no
+    manual softmax derivative or visitation-weight recurrence is needed.
+    materialize_grads gives zero tensors for parameters with no path to J.
     """
     values = evaluate_policy(world, policy, gamma=gamma)
-    gradient = {state: np.zeros(len(Action)) for state in policy.logits}
-    value_weights = {state: 0.0 for state in values.v}
-    value_weights[world.start_state] = 1.0
-
-    # evaluate_policy inserts states in increasing remaining-time order.
-    for state in reversed(values.v):
-        if world.is_terminal(state):
-            continue
-        weight = value_weights[state]
-        probabilities = policy.probabilities(state)
-        # Reverse the local softmax expectation, holding Q fixed at this node.
-        gradient[state] = weight * probabilities * values.advantage[state]
-        for action, probability in zip(Action, probabilities):
-            for outcome in world.transitions(state, action):
-                if not world.is_terminal(outcome.next_state):
-                    value_weights[outcome.next_state] += (
-                        weight * gamma * probability * outcome.probability
-                    )
-
-    return PolicyGradient(values, gradient, value_weights)
+    derivatives = torch.autograd.grad(
+        values.start_return, tuple(policy.logits.values()), materialize_grads=True,
+    )
+    gradient = {state: derivative.detach() for state, derivative in zip(policy.logits, derivatives)}
+    return PolicyGradient(values, gradient)

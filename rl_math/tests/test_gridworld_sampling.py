@@ -4,6 +4,7 @@ import random
 import unittest
 
 import numpy as np
+import torch
 
 from gridworld.model import Action, Gridworld, State
 from common.policy import Policy
@@ -33,17 +34,21 @@ class PolicyTests(unittest.TestCase):
         self.assertIsInstance(policy, Policy)
         row[:] = 0  # Caller-owned arrays must not change the policy after construction.
         self.assertEqual(tuple(Action), (Action.NORTH, Action.EAST, Action.SOUTH, Action.WEST))
-        self.assertIsInstance(policy.probabilities(state), np.ndarray)
-        np.testing.assert_allclose(policy.probabilities(state), [0.1, 0.2, 0.3, 0.4])
-        self.assertAlmostEqual(policy.probabilities(state).sum(), 1.0)
+        self.assertIsInstance(policy.probabilities(state), torch.Tensor)
+        self.assertTrue(policy.logits[state].is_leaf)
+        self.assertTrue(policy.logits[state].requires_grad)
+        self.assertTrue(policy.probabilities(state).requires_grad)
+        torch.testing.assert_close(policy.probabilities(state),
+                                   torch.tensor([.1, .2, .3, .4], dtype=torch.float64))
+        self.assertAlmostEqual(policy.probabilities(state).sum().item(), 1.0)
 
     def test_stable_softmax_and_time_specific_rows(self):
         early, late = State((0, 0), 2), State((0, 0), 1)
         policy = TabularSoftmaxPolicy({early: (1000, 1001, 1002, 1003), late: (0, 0, 0, 0)})
         shifted = TabularSoftmaxPolicy({early: (0, 1, 2, 3)})
-        np.testing.assert_allclose(policy.probabilities(early), shifted.probabilities(early))
-        np.testing.assert_allclose(policy.probabilities(late), [0.25] * 4)
-        self.assertFalse(np.allclose(policy.probabilities(early), policy.probabilities(late)))
+        torch.testing.assert_close(policy.probabilities(early), shifted.probabilities(early))
+        torch.testing.assert_close(policy.probabilities(late), torch.full((4,), .25, dtype=torch.float64))
+        self.assertFalse(torch.allclose(policy.probabilities(early), policy.probabilities(late)))
 
     def test_invalid_rows_and_missing_state(self):
         state = State((0, 0), 1)
@@ -60,7 +65,7 @@ class SamplingTests(unittest.TestCase):
         class SafeRoutePolicy(Policy[State]):
             def probabilities(self, state):
                 action = Action.SOUTH if state.cell[0] == 0 else Action.EAST
-                probabilities = np.zeros(len(Action))
+                probabilities = torch.zeros(len(Action), dtype=torch.float64)
                 probabilities[tuple(Action).index(action)] = 1.0
                 return probabilities
 

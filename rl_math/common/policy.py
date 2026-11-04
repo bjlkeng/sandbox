@@ -3,8 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
-import numpy as np
-from numpy.typing import NDArray
+from torch import Tensor
 
 
 Observation = TypeVar("Observation")
@@ -23,5 +22,5 @@ class Policy(ABC, Generic[Observation]):
     """
 
     @abstractmethod
-    def probabilities(self, state: Observation) -> NDArray[np.float64]:
-        """Return one finite, nonnegative probability per action, summing to 1."""
+    def probabilities(self, state: Observation) -> Tensor:
+        """Return finite nonnegative probabilities summing to 1, retaining their graph."""

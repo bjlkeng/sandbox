@@ -28,10 +28,19 @@ uv sync --locked
 uv run --locked jupyter lab notebooks/01_gridworld.ipynb
 ```
 
-The environment includes NumPy, JupyterLab, and the Python kernel. In JupyterLab,
-use the **Python 3 (ipykernel)** kernel and choose **Run All Cells**. In VS Code,
+The environment includes PyTorch (CPU wheels), NumPy, JupyterLab, and the Python
+kernel. In JupyterLab, use **Python 3 (ipykernel)** and choose **Run All Cells**. In VS Code,
 select this directory's `.venv/bin/python` as the notebook interpreter. The
 `.python-version` file selects Python 3.10; `uv.lock` records exact dependencies.
+
+The tabular policy stores float64 PyTorch parameters and returns probability
+tensors. `gridworld.values.evaluate_policy` computes V, Q, advantage, and the
+scalar `start_return` tensor while retaining the autograd graph.
+`gridworld.gradients.differentiate_policy` uses `torch.autograd.grad` to obtain
+one gradient tensor per logit row, without updating parameters or accumulating
+their `.grad` buffers. The notebook checks these derivatives against central
+finite differences. NumPy owns the sampler's seeded random streams; the sampler
+detaches probabilities at that boundary. Pure evaluation can use `torch.no_grad()`.
 
 When a Tailscale proxy forwards its hostname, include that hostname in Jupyter's
 allowed local names. Replace the example below with the hostname in your browser:

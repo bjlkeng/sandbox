@@ -1,9 +1,9 @@
-"""Exact finite-horizon values under a fixed gridworld policy."""
+"""Differentiable exact finite-horizon values under a fixed gridworld policy."""
 
 from dataclasses import dataclass
 
-import numpy as np
-from numpy.typing import NDArray
+import torch
+from torch import Tensor
 
 from common.policy import Policy
 from gridworld.model import Action, Gridworld, State
@@ -16,13 +16,14 @@ class PolicyValues:
     Keys include every non-wall cell/time pair, even those unreachable from
     the start. Q and advantage rows use NORTH/EAST/SOUTH/WEST order.
     Goal and zero-time states have zero V, Q, and advantage; no action is
-    taken there. These tables are a snapshot of the policy at evaluation.
+    taken there. Values are float64 CPU tensors that retain the computation
+    graph back to the policy's parameters; start_return is a scalar tensor.
     """
 
-    v: dict[State, float]
-    q: dict[State, NDArray[np.float64]]
-    advantage: dict[State, NDArray[np.float64]]
-    start_return: float
+    v: dict[State, Tensor]
+    q: dict[State, Tensor]
+    advantage: dict[State, Tensor]
+    start_return: Tensor
 
 
 def evaluate_policy(
@@ -46,24 +47,30 @@ def evaluate_policy(
     would instead choose actions and solve the Bellman optimality equation.
     Model rewards are conditional means, so the sampler's independent
     zero-mean reward noise does not affect these expected values.
+
+    Use torch.stack for previously computed values: torch.tensor(list_of_values)
+    or conversion to Python floats would detach them from the autograd graph.
+    Only fixed model probabilities and rewards are constructed as constants.
     """
     if not 0.0 <= gamma <= 1.0:
         raise ValueError("gamma must lie in [0, 1]")
 
-    v = {state: 0.0 for state in world.states()}
-    q = {state: np.zeros(len(Action)) for state in v}
-    advantage = {state: np.zeros(len(Action)) for state in v}
+    v = {state: torch.tensor(0.0, dtype=torch.float64) for state in world.states()}
+    q = {state: torch.zeros(len(Action), dtype=torch.float64) for state in v}
+    advantage = {state: torch.zeros(len(Action), dtype=torch.float64) for state in v}
     # states() increases remaining time: zero-time boundary before longer horizons.
     for state in v:
         if world.is_terminal(state):
             continue
-        for index, action in enumerate(Action):
+        action_values = []
+        for action in Action:
             outcomes = world.transitions(state, action)
-            probabilities = np.array([o.probability for o in outcomes])
-            rewards = np.array([o.reward for o in outcomes])
-            future_values = np.array([v[o.next_state] for o in outcomes])
-            q[state][index] = np.dot(probabilities, rewards + gamma * future_values)
-        v[state] = float(np.dot(policy.probabilities(state), q[state]))
+            probabilities = torch.tensor([o.probability for o in outcomes], dtype=torch.float64)
+            rewards = torch.tensor([o.reward for o in outcomes], dtype=torch.float64)
+            future_values = torch.stack([v[o.next_state] for o in outcomes])
+            action_values.append(torch.dot(probabilities, rewards + gamma * future_values))
+        q[state] = torch.stack(action_values)
+        v[state] = torch.dot(policy.probabilities(state).to(q[state]), q[state])
         advantage[state] = q[state] - v[state]
 
     return PolicyValues(v, q, advantage, v[world.start_state])

@@ -33,7 +33,7 @@ class Episode:
     """Recorded seed, Gaussian noise scale, trajectory, and goal/horizon ending.
 
     Replay requires the same gridworld, policy, seed, noise scale, and
-    Python/NumPy environment. Use distinct nonnegative integer seeds for new
+    Python/NumPy/PyTorch environment. Use distinct nonnegative integer seeds for new
     episodes; repeating a seed replays rather than adding independent data.
     """
 
@@ -75,7 +75,9 @@ def sample_episode(
     state = world.start_state
     steps = []
     while not world.is_terminal(state):
-        action = actions[action_rng.choice(len(actions), p=policy.probabilities(state))]
+        # Sampling is outside autograd; retain the policy's graph during evaluation.
+        probabilities = policy.probabilities(state).detach().cpu().numpy()
+        action = actions[action_rng.choice(len(actions), p=probabilities)]
         outcomes = world.transitions(state, action)
         outcome = outcomes[transition_rng.choice(len(outcomes), p=[o.probability for o in outcomes])]
         noise = float(reward_rng.normal(0.0, reward_noise_std)) if reward_noise_std else 0.0
