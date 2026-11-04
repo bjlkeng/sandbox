@@ -5,6 +5,7 @@ description = "Small reinforcement learning experiments for a mathematical prime
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24,<3",
+    "torch>=2.6,<3",
 ]
 
 [dependency-groups]
