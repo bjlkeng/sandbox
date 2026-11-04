@@ -15,17 +15,23 @@ class TabularSoftmaxPolicy(Policy[State]):
     Rows use the full (cell, remaining-time) state. Copy the supplied rows;
     each must contain four finite logits in NORTH/EAST/SOUTH/WEST order.
     Missing states raise KeyError; terminal states need no row because no
-    action is sampled there. Logits are owned float64 CPU parameters so exact
-    value evaluation and finite-difference checks use the same precision.
+    action is sampled there. Logits are owned float64 parameters. By default
+    use CUDA when available; device="cpu" selects the CPU reference explicitly.
 
     Example: logits log(1), log(2), log(3), log(4) give probabilities
     (0.1, 0.2, 0.3, 0.4). These logits are parameters that a later algorithm
     can optimize; this class only converts their current values to probabilities.
     """
 
-    def __init__(self, logits: Mapping[State, Sequence[float] | Tensor]):
+    def __init__(
+        self,
+        logits: Mapping[State, Sequence[float] | Tensor],
+        *,
+        device: str | torch.device | None = None,
+    ):
+        device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         self.logits = {
-            state: torch.nn.Parameter(torch.as_tensor(row, dtype=torch.float64, device="cpu").clone())
+            state: torch.nn.Parameter(torch.as_tensor(row, dtype=torch.float64, device=device).clone())
             for state, row in logits.items()
         }
         if any(row.shape != (len(Action),) or not torch.isfinite(row).all()

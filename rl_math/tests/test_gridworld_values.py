@@ -13,7 +13,7 @@ from gridworld.values import evaluate_policy
 def worked_policy(world):
     return TabularSoftmaxPolicy({
         s: np.log([1, 2, 3, 4]) for s in world.states() if not world.is_terminal(s)
-    })
+    }, device="cpu")
 
 
 class ExactValueTests(unittest.TestCase):
@@ -69,7 +69,7 @@ class ExactValueTests(unittest.TestCase):
         policy = TabularSoftmaxPolicy({
             s: (-1000, 0, -1000, -1000) if s.remaining == 2 else (0, -1000, -1000, -1000)
             for s in world.states() if not world.is_terminal(s)
-        })
+        }, device="cpu")
         values = evaluate_policy(world, policy, gamma=0.5)
         self.assertEqual(values.start_return.item(), -1.5)
         self.assertEqual(values.v[State((0, 1), 1)].item(), -1)
@@ -80,7 +80,7 @@ class ExactValueTests(unittest.TestCase):
         policy = TabularSoftmaxPolicy({
             s: np.log([1, 2 + s.remaining, 3, 4])
             for s in world.states() if not world.is_terminal(s)
-        })
+        }, device="cpu")
         gamma = 0.7
         values = evaluate_policy(world, policy, gamma=gamma)
 

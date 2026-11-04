@@ -16,8 +16,8 @@ class PolicyValues:
     Keys include every non-wall cell/time pair, even those unreachable from
     the start. Q and advantage rows use NORTH/EAST/SOUTH/WEST order.
     Goal and zero-time states have zero V, Q, and advantage; no action is
-    taken there. Values are float64 CPU tensors that retain the computation
-    graph back to the policy's parameters; start_return is a scalar tensor.
+    taken there. Values are float64 tensors on the policy's device, retaining
+    the graph back to its parameters; start_return is a scalar tensor.
     """
 
     v: dict[State, Tensor]
@@ -55,9 +55,12 @@ def evaluate_policy(
     if not 0.0 <= gamma <= 1.0:
         raise ValueError("gamma must lie in [0, 1]")
 
-    v = {state: torch.tensor(0.0, dtype=torch.float64) for state in world.states()}
-    q = {state: torch.zeros(len(Action), dtype=torch.float64) for state in v}
-    advantage = {state: torch.zeros(len(Action), dtype=torch.float64) for state in v}
+    # Model constants and terminal values follow the policy onto CPU or CUDA.
+    device = policy.probabilities(world.start_state).device
+    zero = torch.zeros((), dtype=torch.float64, device=device)
+    v = {state: zero for state in world.states()}
+    q = {state: zero.new_zeros(len(Action)) for state in v}
+    advantage = {state: zero.new_zeros(len(Action)) for state in v}
     # states() increases remaining time: zero-time boundary before longer horizons.
     for state in v:
         if world.is_terminal(state):
@@ -65,8 +68,8 @@ def evaluate_policy(
         action_values = []
         for action in Action:
             outcomes = world.transitions(state, action)
-            probabilities = torch.tensor([o.probability for o in outcomes], dtype=torch.float64)
-            rewards = torch.tensor([o.reward for o in outcomes], dtype=torch.float64)
+            probabilities = zero.new_tensor([o.probability for o in outcomes])
+            rewards = zero.new_tensor([o.reward for o in outcomes])
             future_values = torch.stack([v[o.next_state] for o in outcomes])
             action_values.append(torch.dot(probabilities, rewards + gamma * future_values))
         q[state] = torch.stack(action_values)

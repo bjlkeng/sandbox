@@ -14,7 +14,7 @@ from gridworld.values import evaluate_policy
 def worked_policy(world):
     return TabularSoftmaxPolicy({
         s: np.log([1, 2, 3, 4]) for s in world.states() if not world.is_terminal(s)
-    })
+    }, device="cpu")
 
 
 class ExactGradientTests(unittest.TestCase):
@@ -40,7 +40,7 @@ class ExactGradientTests(unittest.TestCase):
         policy = TabularSoftmaxPolicy({
             s: [.2 * s.remaining, -.3 * (s.cell[0] + 1), .4 * (s.cell[1] - 1), -.1 * s.remaining]
             for s in world.states() if not world.is_terminal(s)
-        })
+        }, device="cpu")
         epsilon = 1e-5
         for gamma in (0, 0.7, 1):
             result = differentiate_policy(world, policy, gamma=gamma)
@@ -53,7 +53,7 @@ class ExactGradientTests(unittest.TestCase):
                         perturbed[state][action_index] += sign * epsilon
                         with torch.no_grad():
                             returns.append(evaluate_policy(
-                                world, TabularSoftmaxPolicy(perturbed), gamma=gamma
+                                world, TabularSoftmaxPolicy(perturbed, device="cpu"), gamma=gamma
                             ).start_return.item())
                     numerical[action_index] = (returns[0] - returns[1]) / (2 * epsilon)
                 with self.subTest(gamma=gamma, state=state):
@@ -100,7 +100,7 @@ class ExactGradientTests(unittest.TestCase):
     def test_early_goal_and_unreachable_rows_have_no_gradient(self):
         world = Gridworld(layout=("SG.",), horizon=3, slip=0)
         # Include optional terminal rows: they are never evaluated or differentiated.
-        policy = TabularSoftmaxPolicy({s: [0, 0, 0, 0] for s in world.states()})
+        policy = TabularSoftmaxPolicy({s: [0, 0, 0, 0] for s in world.states()}, device="cpu")
         result = differentiate_policy(world, policy, gamma=0.5)
         self.assertGreater(result.gradient[world.start_state][1].item(), 0)
         for state in world.states():
@@ -111,7 +111,7 @@ class ExactGradientTests(unittest.TestCase):
     def test_constant_logit_shifts_leave_return_and_gradient_unchanged(self):
         world = Gridworld(horizon=3)
         policy = worked_policy(world)
-        shifted = TabularSoftmaxPolicy({s: row + 20 for s, row in policy.logits.items()})
+        shifted = TabularSoftmaxPolicy({s: row + 20 for s, row in policy.logits.items()}, device="cpu")
         result = differentiate_policy(world, policy, gamma=0.8)
         other = differentiate_policy(world, shifted, gamma=0.8)
         self.assertAlmostEqual(result.values.start_return.item(), other.values.start_return.item())
