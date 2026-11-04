@@ -41,3 +41,7 @@ class TabularSoftmaxPolicy(Policy[State]):
     def probabilities(self, state: State) -> Tensor:
         # PyTorch's stable softmax also records its derivative in the graph.
         return torch.softmax(self.logits[state], dim=0)
+
+    def log_probabilities(self, state: State) -> Tensor:
+        # log(softmax(...)) can underflow before the logarithm; log_softmax avoids it.
+        return torch.log_softmax(self.logits[state], dim=0)

@@ -17,8 +17,9 @@ policy-gradient math:
 * GAE and PPO-Clip as recommended additions to the draft.
 
 `common/` holds the policy interface and return helpers shared across games.
+`algorithms/` holds environment-independent gradient estimators.
 `gridworld/` holds the explicit model, tabular policy, episode sampler, and local
-player. Shared learning algorithms and additional game packages follow the
+player. Additional learning algorithms and game packages follow the
 layout in [PLAN.md](PLAN.md) as their experiments are implemented.
 
 From this directory, create the locked environment and open the worked notebook:
@@ -53,6 +54,16 @@ finite differences. NumPy owns the sampler's seeded random streams; the sampler
 detaches and copies probabilities to CPU at that boundary. Pure evaluation can
 use `torch.no_grad()`. The test suite includes CPU reference checks and CUDA
 agreement/sampling checks; CUDA checks are skipped when no GPU is available.
+
+`Policy.log_probabilities` exposes action log-probabilities with their graph;
+the tabular policy uses `torch.log_softmax` for numerical stability.
+`algorithms.reinforce.full_return_gradient` differentiates
+`mean_episodes(G_0 * sum_t log pi(a_t | s_t))` for complete episodes collected
+under the same frozen policy. It returns detached gradients without parameter
+updates. Every action gets the same discounted full return G_0, with no extra
+outer discount or division by episode length. The notebook works one trajectory
+by hand, checks the expected estimator over all 16 paths of a two-step model,
+and compares one 256-episode seeded estimate with the exact gradient.
 
 When a Tailscale proxy forwards its hostname, include that hostname in Jupyter's
 allowed local names. Replace the example below with the hostname in your browser:

@@ -24,3 +24,12 @@ class Policy(ABC, Generic[Observation]):
     @abstractmethod
     def probabilities(self, state: Observation) -> Tensor:
         """Return finite nonnegative probabilities summing to 1, retaining their graph."""
+
+    def log_probabilities(self, state: Observation) -> Tensor:
+        """Return log pi(. | state), retaining the graph for score derivatives.
+
+        Parameterized policies should override this with a stable log-space
+        computation when available. Zero-probability actions have log pi=-inf
+        and cannot occur in an on-policy sample.
+        """
+        return self.probabilities(state).log()
