@@ -57,10 +57,14 @@ agreement/sampling checks; CUDA checks are skipped when no GPU is available.
 
 `Policy.log_probabilities` exposes action log-probabilities with their graph;
 the tabular policy uses `torch.log_softmax` for numerical stability.
-`algorithms.reinforce.full_return_gradient` differentiates
-`mean_episodes(G_0 * sum_t log pi(a_t | s_t))` for complete episodes collected
-under the same frozen policy. It returns detached gradients without parameter
-updates. Every action gets the same discounted full return G_0, with no extra
+`Episode.rewards()` extracts observed rewards, and
+`Episode.log_probabilities(policy.log_probabilities)` evaluates the selected
+action log-probabilities with a fresh autograd graph.
+`algorithms.reinforce.full_return_gradient(log_probabilities, rewards, parameters, gamma)`
+differentiates `G_0 * sum_t log pi(a_t | s_t)` for one complete episode collected
+under the same frozen policy. Average the returned episode gradient sums for a
+batch estimate. It returns detached gradients without parameter updates.
+Every action gets the same discounted full return G_0, with no extra
 outer discount or division by episode length. The notebook works one trajectory
 by hand, checks the expected estimator over all 16 paths of a two-step model,
 and compares one 256-episode seeded estimate with the exact gradient.

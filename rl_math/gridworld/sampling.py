@@ -4,9 +4,12 @@ NumPy handles random draws. Actions follow tuple(Action): NORTH, EAST, SOUTH,
 WEST. Policies receive the full (cell, remaining-time) state.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
+import torch
+from torch import Tensor
 
 from gridworld.model import Action, Gridworld, State
 from common.policy import Policy
@@ -41,6 +44,24 @@ class Episode:
     reward_noise_std: float
     steps: tuple[EpisodeStep, ...]
     end_reason: str
+
+    def rewards(self) -> list[float]:
+        """Extract observed r_{t+1} values in trajectory order."""
+        return [step.reward for step in self.steps]
+
+    def log_probabilities(self, log_probabilities: Callable[[State], Tensor]) -> Tensor:
+        """Evaluate log pi(a_t | s_t) for each recorded action, retaining its graph.
+
+        Pass a function returning all action log-probabilities in Action order,
+        such as policy.log_probabilities. Each call evaluates fresh tensors on
+        the function's device; no computation graph is stored in the episode.
+        For on-policy gradients, use the unchanged policy that collected it.
+        """
+        if not self.steps:
+            raise ValueError("cannot evaluate log-probabilities for an empty episode")
+        actions = tuple(Action)
+        return torch.stack([log_probabilities(step.state)[actions.index(step.action)]
+                            for step in self.steps])
 
 
 def sample_episode(

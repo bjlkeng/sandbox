@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import torch
 
-from algorithms.reinforce import ReinforceEpisode, full_return_gradient
+from algorithms.reinforce import full_return_gradient
 from common.policy import Policy
 from gridworld.gradients import differentiate_policy
 from gridworld.model import Action, Gridworld, State
@@ -19,11 +19,8 @@ def worked_policy(world, device="cpu"):
     }, device=device)
 
 
-def recorded(policy, steps):
-    return ReinforceEpisode(
-        torch.stack([policy.log_probabilities(s)[tuple(Action).index(a)] for s, a, _ in steps]),
-        [r for _, _, r in steps],
-    )
+def selected_log_probabilities(policy, steps):
+    return torch.stack([policy.log_probabilities(s)[tuple(Action).index(a)] for s, a, _ in steps])
 
 
 class FullReturnTests(unittest.TestCase):
@@ -41,7 +38,8 @@ class FullReturnTests(unittest.TestCase):
         world = Gridworld(layout=("SHG",), horizon=2, slip=0)
         policy = worked_policy(world)
         steps = [(world.start_state, Action.EAST, -6), (State((0, 1), 1), Action.EAST, 9)]
-        gradient = full_return_gradient([recorded(policy, steps)], tuple(policy.logits.values()), gamma=.5)
+        gradient = full_return_gradient(selected_log_probabilities(policy, steps), [-6, 9],
+                                        tuple(policy.logits.values()), gamma=.5)
         # G0 = -6 + .5*9 = -1.5; each visited row gets G0*(one_hot(E)-pi).
         expected = torch.tensor([.15, -1.2, .45, .6], dtype=torch.float64)
         for state, row in zip(policy.logits, gradient):
@@ -69,7 +67,8 @@ class FullReturnTests(unittest.TestCase):
             for gamma in (0, .5, 1):
                 expected = [torch.zeros_like(row) for row in parameters]
                 for probability, steps in paths:
-                    gradient = full_return_gradient([recorded(policy, steps)], parameters, gamma=gamma)
+                    gradient = full_return_gradient(selected_log_probabilities(policy, steps),
+                                                    [r for _, _, r in steps], parameters, gamma=gamma)
                     for row, sample in zip(expected, gradient):
                         row.add_(sample, alpha=probability)
                 exact = differentiate_policy(world, policy, gamma=gamma).gradient
@@ -77,7 +76,7 @@ class FullReturnTests(unittest.TestCase):
                     with self.subTest(layout=layout, gamma=gamma, state=state):
                         torch.testing.assert_close(row, exact[state], rtol=1e-12, atol=1e-14)
 
-    def test_batch_averages_episode_sums_with_unequal_lengths_and_shared_parameters(self):
+    def test_mean_of_episode_sums_with_unequal_lengths_and_shared_parameters(self):
         # A shared two-action parameter also exercises the environment-independent API.
         parameter = torch.nn.Parameter(torch.tensor([0., 0.], dtype=torch.float64))
         parameter.grad = torch.tensor([7., 8.], dtype=torch.float64)
@@ -89,9 +88,10 @@ class FullReturnTests(unittest.TestCase):
                 return torch.softmax(parameter, dim=0)
 
         policy = TwoActionPolicy()  # Exercise the default log_probabilities implementation.
-        episodes = [ReinforceEpisode(policy.log_probabilities(0)[[0]], [2.]),
-                    ReinforceEpisode(policy.log_probabilities(0)[[0, 0]], [3., 4.])]
-        gradient, unused_gradient = full_return_gradient(episodes, (parameter, unused), gamma=.5)
+        first = full_return_gradient(policy.log_probabilities(0)[[0]], [2.], (parameter, unused), gamma=.5)
+        second = full_return_gradient(policy.log_probabilities(0)[[0, 0]], [3., 4.],
+                                      (parameter, unused), gamma=.5)
+        gradient, unused_gradient = (torch.stack(rows).mean(dim=0) for rows in zip(first, second))
         # (2*(.5,-.5) + 5*((.5,-.5)+(.5,-.5))) / 2 = (3,-3).
         torch.testing.assert_close(gradient, parameter.new_tensor([3., -3.]))
         torch.testing.assert_close(unused_gradient, torch.zeros_like(unused), rtol=0, atol=0)
@@ -103,20 +103,20 @@ class FullReturnTests(unittest.TestCase):
 
     def test_zero_return_and_invalid_inputs(self):
         parameter = torch.nn.Parameter(torch.zeros(2, dtype=torch.float64))
-        zero = ReinforceEpisode(torch.log_softmax(parameter, 0)[[0]], [0.])
-        gradient, = full_return_gradient([zero], (parameter,))
+        zero = torch.log_softmax(parameter, 0)[[0]]
+        gradient, = full_return_gradient(zero, [0.], (parameter,))
         torch.testing.assert_close(gradient, torch.zeros_like(parameter), rtol=0, atol=0)
         for gamma in (-.1, 1.1, np.nan, np.inf):
             with self.subTest(gamma=gamma), self.assertRaises(ValueError):
-                full_return_gradient([zero], (parameter,), gamma=gamma)
-        for episodes, parameters in (([], (parameter,)), ([zero], ()),
-                ([ReinforceEpisode(torch.empty(0), [])], (parameter,)),
-                ([ReinforceEpisode(torch.zeros(2), [1.])], (parameter,)),
-                ([ReinforceEpisode(torch.zeros(1, 1), [1.])], (parameter,)),
-                ([ReinforceEpisode(torch.tensor([float('-inf')]), [1.])], (parameter,)),
-                ([ReinforceEpisode(torch.zeros(1), [float('nan')])], (parameter,))):
-            with self.subTest(episodes=episodes), self.assertRaises(ValueError):
-                full_return_gradient(episodes, parameters)
+                full_return_gradient(zero, [0.], (parameter,), gamma=gamma)
+        for logp, rewards, parameters in ((zero, [0.], ()),
+                (torch.empty(0), [], (parameter,)),
+                (torch.zeros(2), [1.], (parameter,)),
+                (torch.zeros(1, 1), [1.], (parameter,)),
+                (torch.tensor([float('-inf')]), [1.], (parameter,)),
+                (torch.zeros(1), [float('nan')], (parameter,))):
+            with self.subTest(logp=logp, rewards=rewards), self.assertRaises(ValueError):
+                full_return_gradient(logp, rewards, parameters)
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA device/driver unavailable")
     def test_cuda_sampled_batch_matches_cpu_and_stays_on_device(self):
@@ -127,8 +127,9 @@ class FullReturnTests(unittest.TestCase):
         for policy in policies:
             episodes = [sample_episode(world, policy, seed=seed, reward_noise_std=2.) for seed in range(8)]
             samples.append(episodes)
-            batch = [recorded(policy, [(s.state, s.action, s.reward) for s in e.steps]) for e in episodes]
-            results.append(full_return_gradient(batch, tuple(policy.logits.values()), gamma=.7))
+            gradients = [full_return_gradient(e.log_probabilities(policy.log_probabilities), e.rewards(),
+                                              tuple(policy.logits.values()), gamma=.7) for e in episodes]
+            results.append(tuple(torch.stack(rows).mean(dim=0) for rows in zip(*gradients)))
         self.assertEqual(samples[0], samples[1])
         for cpu, gpu in zip(*results):
             self.assertEqual(gpu.device.type, "cuda")
