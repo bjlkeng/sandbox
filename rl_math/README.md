@@ -69,6 +69,19 @@ outer discount or division by episode length. The notebook works one trajectory
 by hand, checks the expected estimator over all 16 paths of a two-step model,
 and compares one 256-episode seeded estimate with the exact gradient.
 
+`algorithms.reinforce.reward_to_go_gradient` has the same episode-level API.
+It differentiates `sum_t gamma**t * G_t * log pi(a_t | s_t)`, using the existing
+`common.returns.reward_to_go_weights` helper. The outer `gamma**t` is required
+for the discounted start-state objective; the discount inside `G_t` starts at
+action t. Removing past rewards preserves the expected gradient because the
+current action's expected score, conditional on its preceding history, is zero.
+The notebook contrasts the two estimators on the same `S -> H -> G` path with
+intermediate rewards, enumerates both exact expectations at gamma=0.5 and 1,
+and reuses the same 256 sampled episodes for a paired illustration. Terminal
+rewards alone make the sampled estimators coincide. Each gradient call needs
+fresh log-probabilities under the unchanged collecting policy; both return
+detached gradients without changing parameters or their `.grad` buffers.
+
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps
 with one shared scale. Every figure identifies the fixed policy and model
