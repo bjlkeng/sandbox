@@ -9,3 +9,6 @@
 # uv project environment and shared Python version selection
 .venv/
 !/.python-version
+
+# Regenerable figures, metrics, and experiment outputs
+runs/
