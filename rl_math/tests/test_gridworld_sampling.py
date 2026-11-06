@@ -10,7 +10,7 @@ from gridworld.model import Action, Gridworld, State
 from common.policy import Policy
 from gridworld.policy import TabularSoftmaxPolicy
 from common.returns import discounted_returns
-from gridworld.sampling import sample_episode
+from gridworld.sampling import Episode, sample_episode
 
 
 def east_policy(world):
@@ -61,6 +61,51 @@ class PolicyTests(unittest.TestCase):
 
 
 class SamplingTests(unittest.TestCase):
+    def test_episode_helpers_preserve_reward_order_and_log_probability_graph(self):
+        world = Gridworld(layout=("SHG",), horizon=2, slip=0)
+        policy = east_policy(world)
+        episode = sample_episode(world, policy, seed=7)
+        self.assertEqual(episode.rewards(), [-6, 9])
+        rewards = episode.rewards()
+        rewards[0] = 123  # Extracting rewards does not expose mutable episode state.
+        self.assertEqual(episode.rewards(), [-6, 9])
+        seen = []
+
+        def log_probabilities(state):
+            seen.append(state)
+            return policy.log_probabilities(state)
+
+        logp = episode.log_probabilities(log_probabilities)
+        self.assertEqual(seen, [step.state for step in episode.steps])
+        self.assertEqual(logp.shape, (2,))
+        self.assertEqual(logp.dtype, torch.float64)
+        self.assertTrue(logp.requires_grad)
+        torch.testing.assert_close(logp, torch.zeros(2, dtype=torch.float64))
+        derivatives = torch.autograd.grad(logp.sum(), tuple(policy.logits.values()), materialize_grads=True)
+        self.assertTrue(all(torch.isfinite(row).all() for row in derivatives))
+
+    def test_episode_log_probabilities_select_recorded_actions_and_create_fresh_graphs(self):
+        world = Gridworld(layout=("SHG",), horizon=2, slip=.3)
+        policy = TabularSoftmaxPolicy({s: np.log([1, 2, 3, 4]) for s in world.states()}, device="cpu")
+        episode = sample_episode(world, policy, seed=42, reward_noise_std=2)
+        expected = torch.tensor([np.log([.1, .2, .3, .4][tuple(Action).index(s.action)])
+                                 for s in episode.steps], dtype=torch.float64)
+        self.assertEqual(episode.rewards(), [s.reward for s in episode.steps])
+        gradients = []
+        for _ in range(2):
+            logp = episode.log_probabilities(policy.log_probabilities)
+            torch.testing.assert_close(logp, expected)
+            gradients.append(torch.autograd.grad(logp.sum(), tuple(policy.logits.values()),
+                                                 materialize_grads=True))
+        for first, second in zip(*gradients):
+            torch.testing.assert_close(first, second, rtol=0, atol=0)
+
+    def test_empty_episode_helpers(self):
+        episode = Episode(0, 0., (), "horizon")
+        self.assertEqual(episode.rewards(), [])
+        with self.assertRaisesRegex(ValueError, "empty episode"):
+            episode.log_probabilities(lambda state: torch.zeros(4))
+
     def test_sampler_accepts_a_non_tabular_policy(self):
         class SafeRoutePolicy(Policy[State]):
             def probabilities(self, state):
