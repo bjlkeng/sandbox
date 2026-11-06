@@ -29,7 +29,7 @@ uv sync --locked
 uv run --locked jupyter lab notebooks/01_gridworld.ipynb
 ```
 
-The locked Linux environment includes CUDA-enabled PyTorch, NumPy, JupyterLab,
+The locked Linux environment includes CUDA-enabled PyTorch, NumPy, Matplotlib, JupyterLab,
 and the Python kernel. In JupyterLab, use **Python 3 (ipykernel)** and choose
 **Run All Cells**. Restart the kernel after changing the environment. In VS Code,
 select this directory's `.venv/bin/python` as the notebook interpreter. The
@@ -68,6 +68,31 @@ Every action gets the same discounted full return G_0, with no extra
 outer discount or division by episode length. The notebook works one trajectory
 by hand, checks the expected estimator over all 16 paths of a two-step model,
 and compares one 256-episode seeded estimate with the exact gradient.
+
+The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
+probabilities with 1 and 12 steps remaining, and four action-advantage maps
+with one shared scale. Every figure identifies the fixed policy and model
+settings. The worked `SHG` example shows why an action can have positive
+advantage even with negative V: `Q(NORTH) - V = -2 - (-2.9) = +0.9`.
+`gridworld.plotting` displays existing evaluator/sampler results; it detaches
+tensors at the display boundary. The policy's hand-chosen preferences are
+shared between the notebook and figure command in `gridworld.figures`.
+
+Reproduce the selected [figures](figures/gridworld/) noninteractively from this
+directory, using the same locked environment:
+
+```bash
+uv sync --locked
+uv run --locked python -m gridworld.figures --output-dir runs/gridworld-figures --device cuda
+```
+
+This writes four PNGs and `manifest.json` containing the model/reward settings,
+fixed policy rule, seeds, library versions, device, selected exact values,
+sampled paths/rewards, and elapsed time. It uses the RTX/CUDA device when
+requested; `--device cpu` selects the CPU reference. The output directory must
+be new; choose another path for a rerun. Existing outputs are never overwritten.
+`runs/` is ignored; `figures/gridworld/` holds the selected publication copies.
+The notebook only displays figures, so rerunning its cells creates no files.
 
 When a Tailscale proxy forwards its hostname, include that hostname in Jupyter's
 allowed local names. Replace the example below with the hostname in your browser:

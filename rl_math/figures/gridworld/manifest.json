@@ -1,0 +1,375 @@
+{
+  "world": {
+    "layout": [
+      ".....",
+      "..#..",
+      "..#..",
+      ".....",
+      "SHHHG"
+    ],
+    "horizon": 12,
+    "slip": 0.2,
+    "step_reward": -1.0,
+    "goal_reward": 10.0,
+    "hazard_penalty": -5.0
+  },
+  "policy": {
+    "name": "safe-route preference (0.7 preferred, 0.1 each other action)",
+    "rule": "The notebook's hand-chosen logits, held fixed at every remaining time.\n\n    On the bottom row prefer NORTH; elsewhere prefer EAST until the last\n    column, then SOUTH. On the default map this favors the longer safe route.\n    A logit of log(7) versus three zeros yields probabilities (.7, .1, .1, .1)\n    in the corresponding action order. This is a preference, not a safe-path\n    guarantee: both policy sampling and environmental slip can enter hazards.",
+    "action_order": [
+      "NORTH",
+      "EAST",
+      "SOUTH",
+      "WEST"
+    ]
+  },
+  "gamma": 0.9,
+  "reward_noise_std": 2.0,
+  "seeds": [
+    0,
+    1,
+    7
+  ],
+  "remaining_slices": [
+    1,
+    12
+  ],
+  "start_return": -8.556035196075005,
+  "versions": {
+    "python": "3.10.12",
+    "numpy": "2.2.6",
+    "torch": "2.14.1+cu130",
+    "matplotlib": "3.10.9"
+  },
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "figures": [
+    "paths.png",
+    "values_policy_h01.png",
+    "values_policy_h12.png",
+    "advantages_h12.png"
+  ],
+  "selected_cells": [
+    {
+      "cell": [
+        4,
+        0
+      ],
+      "remaining": 1,
+      "v": -1.7000000000000002,
+      "q": [
+        -1.3333333333333335,
+        -5.000000000000001,
+        -1.3333333333333335,
+        -1.3333333333333335
+      ],
+      "advantage": [
+        0.3666666666666667,
+        -3.3000000000000007,
+        0.3666666666666667,
+        0.3666666666666667
+      ],
+      "probabilities": [
+        0.7,
+        0.1,
+        0.1,
+        0.1
+      ]
+    },
+    {
+      "cell": [
+        4,
+        0
+      ],
+      "remaining": 12,
+      "v": -8.556035196075005,
+      "q": [
+        -7.8882284244418255,
+        -12.639075146931685,
+        -8.851838921362791,
+        -8.851838921362791
+      ],
+      "advantage": [
+        0.6678067716331793,
+        -4.08303995085668,
+        -0.29580372528778653,
+        -0.29580372528778653
+      ],
+      "probabilities": [
+        0.7,
+        0.1,
+        0.1,
+        0.1
+      ]
+    },
+    {
+      "cell": [
+        3,
+        3
+      ],
+      "remaining": 12,
+      "v": 0.7619383878078886,
+      "q": [
+        -1.234723877916808,
+        2.636243883293607,
+        -6.076073635531377,
+        -3.5235257915281775
+      ],
+      "advantage": [
+        -1.9966622657246966,
+        1.8743054954857183,
+        -6.838012023339266,
+        -4.285464179336066
+      ],
+      "probabilities": [
+        0.1,
+        0.7,
+        0.1,
+        0.1
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "seed": 0,
+      "end_reason": "goal",
+      "cells": [
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          4
+        ]
+      ],
+      "actions": [
+        "WEST",
+        "NORTH",
+        "EAST",
+        "EAST",
+        "EAST",
+        "EAST",
+        "NORTH",
+        "SOUTH",
+        "SOUTH"
+      ],
+      "rewards": [
+        0.8841980075552054,
+        -2.3969850409163254,
+        2.177011472042904,
+        0.9121177509366067,
+        -4.8043839146129415,
+        0.8961219496593771,
+        -0.003955632748771087,
+        0.09842676551317253,
+        5.2869996374766846
+      ]
+    },
+    {
+      "seed": 1,
+      "end_reason": "horizon",
+      "cells": [
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "actions": [
+        "NORTH",
+        "EAST",
+        "EAST",
+        "EAST",
+        "NORTH",
+        "SOUTH",
+        "EAST",
+        "SOUTH",
+        "NORTH",
+        "EAST",
+        "EAST",
+        "EAST"
+      ],
+      "rewards": [
+        1.8847712884031687,
+        -2.780228327591109,
+        0.5743908877195134,
+        0.9170761957701898,
+        -3.6523180186130886,
+        -4.699061080718398,
+        2.759530183725063,
+        -3.046342987137242,
+        2.489417073508499,
+        -1.218436054737869,
+        -5.071784684552092,
+        1.9851964394392336
+      ]
+    },
+    {
+      "seed": 7,
+      "end_reason": "horizon",
+      "cells": [
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "actions": [
+        "EAST",
+        "NORTH",
+        "EAST",
+        "SOUTH",
+        "EAST",
+        "NORTH",
+        "NORTH",
+        "EAST",
+        "NORTH",
+        "EAST",
+        "SOUTH",
+        "SOUTH"
+      ],
+      "rewards": [
+        -5.921029966986124,
+        1.2157098663523076,
+        -2.025218216552653,
+        -4.253800772685609,
+        -5.755964499222648,
+        1.3830419911268845,
+        -1.6269278785174321,
+        -2.5415310043660613,
+        -0.41798570209916175,
+        -0.3665337476174103,
+        -2.186889891194186,
+        -1.5165782205160028
+      ]
+    }
+  ],
+  "elapsed_seconds": 1.705614309757948
+}
