@@ -82,6 +82,25 @@ rewards alone make the sampled estimators coincide. Each gradient call needs
 fresh log-probabilities under the unchanged collecting policy; both return
 detached gradients without changing parameters or their `.grad` buffers.
 
+Pass `baselines=` to `reward_to_go_gradient` to subtract one fixed state-only
+value per action in episode order. For example, obtain exact V with
+`baseline_values = evaluate_policy(world, policy, gamma).v`, then pass
+`torch.stack([baseline_values[step.state] for step in episode.steps])`.
+The estimator differentiates only log-probabilities, with detached weights
+`gamma**t * (G_t - b(s_t))`. Baselines follow the log-probability device/dtype;
+omitting them preserves plain reward-to-go. The caller must keep the baseline
+function fixed and independent of the sampled action and subsequent returns.
+Fitting it on the same probe episodes can violate that condition.
+
+The notebook extends the `SHG` example with exact V, checks cancellation over
+all actions and complete paths for exact and intentionally imperfect baselines,
+and reuses the existing 256 episodes without updating the policy. `G_t - V(s_t)`
+is a sampled advantage whose conditional mean is `Q(s_t,a_t) - V(s_t)`.
+A two-action counterexample shows why exact V need not minimize gradient
+variance: it minimizes unweighted squared return error, whereas the gradient
+also contains action-dependent scores. No value fitting or bootstrapping is
+needed for this baseline example.
+
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps
 with one shared scale. Every figure identifies the fixed policy and model

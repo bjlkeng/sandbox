@@ -11,6 +11,7 @@ from gridworld.gradients import differentiate_policy
 from gridworld.model import Action, Gridworld, State
 from gridworld.policy import TabularSoftmaxPolicy
 from gridworld.sampling import sample_episode
+from gridworld.values import evaluate_policy
 
 
 ESTIMATORS = (full_return_gradient, reward_to_go_gradient)
@@ -97,16 +98,104 @@ class ReinforceTests(unittest.TestCase):
             self.assertAlmostEqual(sum(p for p, _ in paths), 1)
             for gamma in (0, .5, 1):
                 exact = differentiate_policy(world, policy, gamma=gamma).gradient
-                for estimator in ESTIMATORS:
+                exact_values = evaluate_policy(world, policy, gamma=gamma).v
+                imperfect = {s: row.new_tensor(3 + s.remaining + 2*s.cell[1])
+                             for s, row in policy.logits.items()}
+                variants = ((full_return_gradient, "full", None),
+                            (reward_to_go_gradient, "RTG", None),
+                            (reward_to_go_gradient, "exact V", exact_values),
+                            (reward_to_go_gradient, "imperfect", imperfect))
+                for estimator, label, baseline in variants:
                     expected = [torch.zeros_like(row) for row in parameters]
                     for probability, steps in paths:
+                        kwargs = {} if baseline is None else {
+                            "baselines": torch.stack([baseline[s] for s, _, _ in steps])}
                         gradient = estimator(selected_log_probabilities(policy, steps),
-                                             [r for _, _, r in steps], parameters, gamma=gamma)
+                                             [r for _, _, r in steps], parameters, gamma=gamma, **kwargs)
                         for row, sample in zip(expected, gradient):
                             row.add_(sample, alpha=probability)
                     for state, row in zip(policy.logits, expected):
-                        with self.subTest(estimator=estimator.__name__, layout=layout, gamma=gamma, state=state):
+                        with self.subTest(variant=label, layout=layout, gamma=gamma, state=state):
                             torch.testing.assert_close(row, exact[state], rtol=1e-12, atol=1e-14)
+
+    def test_baseline_subtraction_keeps_outer_discount(self):
+        world = Gridworld(layout=("SHG",), horizon=2, slip=0)
+        policy = worked_policy(world)
+        late = State((0, 1), 1)
+        steps = [(world.start_state, Action.EAST, -6), (late, Action.EAST, 9)]
+        # Fixed b=(-2.9,-1), equal to exact V at gamma=.5. The weights are
+        # (-6 + gamma*9 + 2.9, gamma*(9+1)), not gamma**t*G_t - b_t.
+        for gamma, early_row, late_row in (
+            (0, [.31, -2.48, .93, 1.24], [0, 0, 0, 0]),
+            (.5, [-.14, 1.12, -.42, -.56], [-.5, 4, -1.5, -2]),
+            (1, [-.59, 4.72, -1.77, -2.36], [-1, 8, -3, -4]),
+        ):
+            gradient = reward_to_go_gradient(selected_log_probabilities(policy, steps), [-6, 9],
+                                             tuple(policy.logits.values()), gamma=gamma,
+                                             baselines=[-2.9, -1.])
+            for state, row in zip(policy.logits, gradient):
+                expected = early_row if state == world.start_state else late_row if state == late else [0]*4
+                with self.subTest(gamma=gamma, state=state):
+                    torch.testing.assert_close(row, row.new_tensor(expected), rtol=1e-12, atol=1e-14)
+
+    def test_baseline_graph_is_detached_and_reusable_without_actor_or_target_derivatives(self):
+        world = Gridworld(layout=("SHG",), horizon=2, slip=0)
+        policy = worked_policy(world)
+        states = [world.start_state, State((0, 1), 1)]
+        values = evaluate_policy(world, policy, gamma=.5)
+        target_parameter = torch.nn.Parameter(torch.tensor(0., dtype=torch.float64))
+        # The baseline graph depends on the actor and an otherwise unused target
+        # parameter. Neither path belongs in the actor's score derivative.
+        baselines = torch.stack([values.v[s] for s in states]) + target_parameter
+        baselines.retain_grad()
+        frozen_baselines = baselines.detach().clone()
+        parameters = (*policy.logits.values(), target_parameter)
+        originals = [p.detach().clone() for p in parameters]
+        for p in parameters:
+            p.grad = torch.full_like(p, 7.)
+        steps = [(s, Action.EAST, r) for s, r in zip(states, [-6, 9])]
+        # Reusing even the baseline graph is safe; log-probabilities need a fresh graph.
+        for _ in range(2):
+            gradient = reward_to_go_gradient(selected_log_probabilities(policy, steps), [-6, 9],
+                                             parameters, gamma=.5, baselines=baselines)
+            for state, row in zip(policy.logits, gradient):
+                expected = ([-.14, 1.12, -.42, -.56] if state == states[0] else
+                            [-.5, 4, -1.5, -2] if state == states[1] else [0]*4)
+                torch.testing.assert_close(row, row.new_tensor(expected), rtol=1e-12, atol=1e-14)
+            torch.testing.assert_close(gradient[-1], torch.zeros_like(target_parameter), rtol=0, atol=0)
+            for p, original, row in zip(parameters, originals, gradient):
+                torch.testing.assert_close(p, original, rtol=0, atol=0)
+                torch.testing.assert_close(p.grad, torch.full_like(p, 7.), rtol=0, atol=0)
+                self.assertFalse(row.requires_grad)
+            torch.testing.assert_close(baselines, frozen_baselines, rtol=0, atol=0)
+            self.assertIsNone(baselines.grad)
+
+    def test_zero_baseline_shared_parameters_and_unequal_episode_lengths(self):
+        parameter = torch.nn.Parameter(torch.zeros(2, dtype=torch.float64))
+        gradients = []
+        for rewards, baselines in (([2.], [1.]), ([3., 4.], [1., 2.])):
+            actions = [0] * len(rewards)
+            gradient, = reward_to_go_gradient(torch.log_softmax(parameter, 0)[actions], rewards,
+                                              (parameter,), gamma=.5, baselines=baselines)
+            gradients.append(gradient)
+            plain, = reward_to_go_gradient(torch.log_softmax(parameter, 0)[actions], rewards,
+                                           (parameter,), gamma=.5)
+            zero, = reward_to_go_gradient(torch.log_softmax(parameter, 0)[actions], rewards,
+                                          (parameter,), gamma=.5, baselines=[0.]*len(rewards))
+            torch.testing.assert_close(plain, zero, rtol=0, atol=0)
+        # Weights are (1,) and (4,1); average episode sums: (1+4+1)*(.5,-.5)/2.
+        torch.testing.assert_close(torch.stack(gradients).mean(0), parameter.new_tensor([1.5, -1.5]))
+
+    def test_baseline_requires_one_finite_scalar_per_action(self):
+        parameter = torch.nn.Parameter(torch.zeros(2))
+        for baselines in ([], [1.], [[1., 2.]], 1., [np.nan, 0.], [np.inf, 0.], [1e100, 0.]):
+            with self.subTest(baselines=baselines), self.assertRaises(ValueError):
+                reward_to_go_gradient(torch.log_softmax(parameter, 0)[[0, 1]], [1., 2.],
+                                       (parameter,), baselines=baselines)
+        # Finite individual weights may still overflow when subtracting the baseline.
+        with self.assertRaises(ValueError):
+            reward_to_go_gradient(torch.log_softmax(parameter, 0)[[0]], [3e38],
+                                   (parameter,), baselines=[-3e38])
 
     def test_mean_of_episode_sums_with_unequal_lengths_and_shared_parameters(self):
         # A shared two-action parameter also exercises the environment-independent API.
@@ -170,6 +259,29 @@ class ReinforceTests(unittest.TestCase):
                 with self.subTest(estimator=estimator.__name__):
                     self.assertEqual(gpu.device.type, "cuda")
                     torch.testing.assert_close(cpu, gpu.cpu(), rtol=1e-12, atol=1e-12)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA device/driver unavailable")
+    def test_cuda_baselines_match_cpu_including_baseline_device_conversion(self):
+        world = Gridworld(layout=("SHG",), horizon=2, slip=.3)
+        policies = [worked_policy(world, device) for device in ("cpu", "cuda")]
+        episodes = [sample_episode(world, policies[0], seed=seed, reward_noise_std=2.) for seed in range(8)]
+        values = [evaluate_policy(world, policy, gamma=.7) for policy in policies]
+        for episode in episodes:
+            results = []
+            for policy, table in zip(policies, values):
+                # A CPU baseline also gets copied to the CUDA actor's dtype/device.
+                for baseline_device in ("cpu", policy.logits[world.start_state].device):
+                    baseline = torch.stack([table.v[step.state] for step in episode.steps]).to(baseline_device)
+                    gradient = reward_to_go_gradient(episode.log_probabilities(policy.log_probabilities),
+                                                     episode.rewards(), tuple(policy.logits.values()),
+                                                     gamma=.7, baselines=baseline)
+                    for row in gradient:
+                        self.assertEqual(row.device, policy.logits[world.start_state].device)
+                        self.assertEqual(row.dtype, torch.float64)
+                    results.append(gradient)
+            for gradient in results[1:]:
+                for cpu, actual in zip(results[0], gradient):
+                    torch.testing.assert_close(cpu, actual.cpu(), rtol=1e-12, atol=1e-12)
 
 
 if __name__ == "__main__":
