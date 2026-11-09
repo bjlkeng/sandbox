@@ -75,7 +75,8 @@ def fit_monte_carlo_baseline(
     available by default), then snapshot the results as immutable scalar data.
     Fitting has no actor parameter input and retains no target computation graph.
     """
-    discounted_returns([], gamma)  # Validate gamma even before reading the data.
+    if not 0.0 <= gamma <= 1.0:
+        raise ValueError("gamma must lie in [0, 1]")
     if not training_episodes:
         raise ValueError("supply at least one complete training episode")
     device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
