@@ -101,6 +101,25 @@ variance: it minimizes unweighted squared return error, whereas the gradient
 also contains action-dependent scores. No value fitting or bootstrapping is
 needed for this baseline example.
 
+`gridworld.baselines.fit_monte_carlo_baseline(training_episodes, gamma, device=...)`
+fits a tabular state/time baseline from complete recorded returns. Each fitted
+value is the mean G_t at that state, the exact least-squares solution without an
+optimizer or bootstrapping. Float64 means use the selected device; the result
+stores read-only scalar values, visit counts, training seeds, and gamma.
+Unseen states have the fixed fallback zero. Pass `learned.for_episode(probe)`
+as `baselines=` to the existing reward-to-go estimator. Lookup reads only probe
+states and rejects training seeds; callers must still collect independent data.
+
+The notebook fits 32 noisy episodes with seeds 1000..1031, then freezes the
+table for the existing 256 probes (seeds 0..255). Both use the same fixed `SHG`
+policy, horizon 2, no slip, gamma=0.5, and reward-noise sigma=2. It displays
+training targets/counts and errors against exact V, verifies the conditional
+expected gradient by path enumeration, and reports the held-out probe estimates.
+Fitting adds 64 transitions to the probes' 512. A one-step example shows how
+fitting a baseline to the probe's own returns can bias the gradient even when
+the fitted values are detached: detachment removes an autograd path, not the
+statistical dependence on the sampled action. There are no policy updates.
+
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps
 with one shared scale. Every figure identifies the fixed policy and model
