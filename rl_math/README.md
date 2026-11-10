@@ -120,6 +120,58 @@ fitting a baseline to the probe's own returns can bias the gradient even when
 the fitted values are detached: detachment removes an autograd path, not the
 statistical dependence on the sampled action. There are no policy updates.
 
+`common.gradient_metrics.summarize_gradients` compares repeated **batch mean
+gradient vectors** with the exact reference in a fixed logit coordinate order.
+It sums coordinate variances (the covariance trace), without averaging over
+coordinates. With B batches, the finite-sample identity is
+`MSE = squared_empirical_bias + empirical_variance_trace`, where the variance
+uses denominator B. The separately reported sample variance uses B-1, so its
+contribution to that identity is `(B-1)/B * sample_variance_trace`.
+The squared empirical bias includes noise in the mean of B batches; its expected
+value is true squared bias plus population batch variance/B. The reported
+`mean_noise_floor = sample_variance_trace/B` estimates that extra contribution,
+and `mean_standard_error` gives coordinatewise uncertainty in the grand mean.
+These are descriptive measurements, not confidence intervals or a test for bias.
+
+Run the short frozen-policy comparison from this directory:
+
+```bash
+uv sync --locked
+uv run --locked python -m gridworld.gradient_probe run --output-dir runs/gradient-probe --device cuda
+uv run --locked python -m gridworld.gradient_probe summarize runs/gradient-probe/probe.json
+```
+
+The fixed pilot uses **32 independent batches of 8 episodes**, seeds **0..255**,
+in the same `SHG` example: horizon 2, slip 0, gamma=0.5, noise sigma=2, and
+probabilities (0.1, 0.2, 0.3, 0.4). Every estimator uses the same episodes within
+each batch. Full-return, reward-to-go, exact-V baseline, and the learned Monte
+Carlo baseline all average whole episode sums, including zero logit rows.
+The learned table is fitted once using seeds **1000..1031** and held fixed;
+the results are conditional on that fit. Its **64** training transitions are
+additional to the **512** shared probe transitions. Equal probe budgets do not
+mean equal total data costs. There is no sweep or policy training.
+
+`run` saves `probe.json` (all batch vectors, the exact gradient, coordinate
+order, policy logits, world/reward settings, batch seeds, baseline values and
+training counts/seeds, versions, device, and wall-clock times) and `summary.json`.
+Use a new output directory for each run; existing outputs are preserved.
+`summarize` reads only the raw JSON and prints the same summary, without sampling,
+fitting, exact-model evaluation, or GPU access. For example, verify replay with:
+
+```bash
+uv run --locked python -m gridworld.gradient_probe summarize runs/gradient-probe/probe.json > runs/gradient-probe/recomputed-summary.json
+cmp runs/gradient-probe/summary.json runs/gradient-probe/recomputed-summary.json
+```
+
+The notebook's **Measure repeated batch gradients** section works a two-coordinate
+example by hand, runs this pilot on CUDA, and plots the finite-sample MSE
+decomposition. Notebook execution keeps raw data in memory and writes no files;
+the command above saves it. `--device cpu` provides a reference run. The pilot's
+observed MSEs are 3.0085 (full return), 1.9761 (reward-to-go), 0.9865 (exact V),
+and 1.0686 (learned baseline). They describe this one setting and fit, not a
+universal ranking. The earlier exact-expectation checks establish unbiasedness;
+a nonzero finite-sample discrepancy does not overturn them.
+
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps
 with one shared scale. Every figure identifies the fixed policy and model
