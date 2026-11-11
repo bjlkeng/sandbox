@@ -172,6 +172,37 @@ and 1.0686 (learned baseline). They describe this one setting and fit, not a
 universal ranking. The earlier exact-expectation checks establish unbiasedness;
 a nonzero finite-sample discrepancy does not overturn them.
 
+`gridworld.monte_carlo_sweep` extends that measurement to a declared **3 by 3
+sweep**: N=(1,8,32) episodes per batch, reward noise sigma=(0,2,4), and B=128
+independent batches per setting. One policy and one separately learned baseline
+stay fixed across all settings. `common.gradient_metrics.summarize_comparison`
+adds paired whole-batch bootstrap intervals for signed bias, sample variance,
+MSE, and MSE differences from reward-to-go. These are approximate pointwise
+intervals, conditional on one fit; squared empirical bias remains descriptive.
+
+The notebook's **Compare noise and episode count** section reads the
+[selected figures and saved summary](figures/gridworld/monte_carlo/README.md),
+so viewing the results does not recollect the sweep. That page gives captions,
+interpretation, budgets, and all settings. To collect and then replay from this
+directory (each output directory must be new):
+
+```bash
+uv sync --locked
+uv run --locked python -m gridworld.monte_carlo_sweep run --pilot --output-dir runs/mc-pilot --device cuda
+uv run --locked python -m gridworld.monte_carlo_sweep run --output-dir runs/mc-sweep --device cuda
+uv run --locked python -m gridworld.monte_carlo_sweep report runs/mc-sweep/sweep.json --output-dir runs/mc-replot
+cmp runs/mc-sweep/summary.json runs/mc-replot/summary.json
+```
+
+`run` saves raw vectors in `sweep.json`, all summary statistics and interval
+endpoints in `summary.json`, and two PNGs. `report` rebuilds the summary and
+figures using only the raw JSON; it needs no GPU, sampling, fitting, or exact
+model evaluation. The pilot uses separate seeds and is excluded from the
+selected results. Full collection uses 15,744 shared probe episodes (31,488
+transitions), plus one 32-episode fit (64 transitions). The observed full command
+took 35.8 seconds on the RTX 3090; this is wall-clock observation, not a hardware
+benchmark. `runs/` remains ignored. No TD/GAE or neural training is included.
+
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps
 with one shared scale. Every figure identifies the fixed policy and model
