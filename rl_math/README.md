@@ -201,7 +201,58 @@ model evaluation. The pilot uses separate seeds and is excluded from the
 selected results. Full collection uses 15,744 shared probe episodes (31,488
 transitions), plus one 32-episode fit (64 transitions). The observed full command
 took 35.8 seconds on the RTX 3090; this is wall-clock observation, not a hardware
-benchmark. `runs/` remains ignored. No TD/GAE or neural training is included.
+benchmark. `runs/` remains ignored. This sweep compares only Monte Carlo methods.
+
+The notebook's **One-step TD: predict the remaining return** section adds
+`algorithms.advantages.one_step_td_advantages(rewards, values, next_values, terminated, gamma)`.
+It computes `delta_t = r_{t+1} + gamma * Vhat(s_{t+1}) - Vhat(s_t)`, replacing
+the next value with zero at genuine task termination. Goal arrival and this
+gridworld's finite task horizon both terminate; an external collection cutoff
+would retain its final observation's bootstrap. Predictions include remaining
+time in the state. Rewards and both value predictions are detached.
+
+`algorithms.actor_critic.one_step_td_gradient` uses the same episode-level API
+as REINFORCE, plus keyword arguments `values=`, `next_values=`, and `terminated=`.
+It differentiates only `sum_t gamma**t * delta_t * log pi(a_t | s_t)` and returns
+detached episode gradient sums without changing parameters or `.grad` buffers.
+Keep the collecting policy and critic fixed, use fresh log-probability graphs,
+and average whole episode sums. This API expects complete episodes starting
+at t=0; it does not implement partial rollout weighting or critic training.
+
+With exact V, the conditional mean of delta is the true advantage, so the
+expected gradient matches the Bellman/autograd reference. The worked `S -> H -> G`
+path has rewards (-6,9), gamma=0.5, and V(S,2)=-2.9, V(H,1)=-1. Its TD residuals
+are (-3.6,10), and its discounted actor weights are (-3.6,5). The terminal
+bootstrap is zero even if a critic supplies a nonzero prediction there.
+
+The comparison deliberately sets Vhat(H,1)=V(H,1)+4 and keeps exact values
+elsewhere. Subtracting this fixed table as a Monte Carlo baseline preserves the
+expected gradient. Bootstrapping from it instead shifts the S/2 gradient by
+(-0.04,+0.32,-0.12,-0.16), in NORTH/EAST/SOUTH/WEST order. The next-state error
+depends on the current action; detaching targets cannot cancel that statistical
+bias. Enumeration checks every coordinate, including zero rows, and additional
+tests cover slip, early goal endings, gamma=0 and 1, and CPU/CUDA agreement.
+
+Add these TD variants and the matching imperfect Monte Carlo baseline to the
+same short frozen-policy probe (32 batches of 8, seeds 0..255, sigma=2):
+
+```bash
+uv sync --locked
+uv run --locked python -m gridworld.gradient_probe run --td --output-dir runs/td-probe --device cuda
+uv run --locked python -m gridworld.gradient_probe summarize runs/td-probe/probe.json > runs/td-probe/recomputed-summary.json
+cmp runs/td-probe/summary.json runs/td-probe/recomputed-summary.json
+```
+
+Use a new output directory for a rerun. All seven methods reuse the same 512
+probe transitions; the existing learned MC baseline still uses its separate
+64-transition fit. The deliberately imperfect TD critic is hand-set, with no
+fitting data. `collect_gradient_batches(..., imperfect_critic=table)` accepts
+a supplied state/time table, snapshots it before sampling, and records both
+critics in the raw JSON. Omitting it retains the four Monte Carlo methods and
+their original results. `summarize` still replays without collection or GPU use.
+The notebook plots empirical bias and MSE alongside the enumerated true bias;
+a short noisy probe alone does not establish unbiasedness or a variance ranking.
+No policy updates, n-step/GAE estimator, or neural training is added here.
 
 The notebook also plots three sampled paths (seeds 0, 1, 7), exact V and policy
 probabilities with 1 and 12 steps remaining, and four action-advantage maps

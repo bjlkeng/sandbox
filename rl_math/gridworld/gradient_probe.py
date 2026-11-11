@@ -6,7 +6,7 @@ From rl_math:
 """
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import json
 from pathlib import Path
 import platform
@@ -15,13 +15,15 @@ from time import perf_counter
 import numpy as np
 import torch
 
+from algorithms.actor_critic import one_step_td_gradient
 from algorithms.reinforce import full_return_gradient, reward_to_go_gradient
 from common.gradient_metrics import summarize_gradients
 from gridworld.baselines import MonteCarloBaseline, fit_monte_carlo_baseline
 from gridworld.gradients import differentiate_policy
-from gridworld.model import Action, Gridworld
+from gridworld.model import Action, Gridworld, State
 from gridworld.policy import TabularSoftmaxPolicy
 from gridworld.sampling import sample_episode
+from gridworld.values import evaluate_policy
 
 
 def collect_gradient_batches(
@@ -32,8 +34,9 @@ def collect_gradient_batches(
     baseline: MonteCarloBaseline,
     gamma: float,
     reward_noise_std: float,
+    imperfect_critic: Mapping[State, float | torch.Tensor] | None = None,
 ) -> dict:
-    """Compare four existing estimators using paired episodes in independent batches.
+    """Compare Monte Carlo and optional TD estimators on paired independent batches.
 
     Each row is (1/N) sum_i gradient(episode_i). Distinct seeds across all
     batches provide independent sampler streams; the same episodes within a
@@ -45,7 +48,15 @@ def collect_gradient_batches(
     retain zero/unvisited rows. Save this basis, the exact gradient, every batch
     vector, settings, and timing. Computation stays on the policy device until
     detached batch means are copied to CPU for serialization/statistics.
-    No policy updates, refits, bootstrapping, or advantage normalization.
+    No policy updates, refits, or advantage normalization.
+
+    Supplying imperfect_critic adds exact-critic TD, imperfect-critic TD, and
+    the same imperfect table used only as a Monte Carlo baseline. Supply every
+    nonterminal policy state, including remaining time. Copy/detach the table
+    before sampling and force zero terminal bootstrap. The caller keeps it
+    independent of probe actions/returns. Its origin need not be a learned fit;
+    the short TD probe deliberately perturbs exact V to isolate critic error.
+    Omit it to retain the original four-method Monte Carlo comparison.
 
     Learned-baseline results are conditional on this ONE fit. Its training
     seeds/counts are recorded separately; equal probe episode budgets do not
@@ -68,12 +79,22 @@ def collect_gradient_batches(
     states = tuple(policy.logits)
     parameters = tuple(policy.logits.values())
     device = parameters[0].device
+    critic_values = None
+    if imperfect_critic is not None:
+        if any(s not in imperfect_critic for s in states):
+            raise ValueError("imperfect_critic must cover every nonterminal policy state")
+        critic_values = {s: torch.as_tensor(imperfect_critic[s], dtype=parameters[0].dtype,
+                                          device=device).detach().clone() for s in states}
+        if any(v.ndim != 0 or not torch.isfinite(v) for v in critic_values.values()):
+            raise ValueError("imperfect_critic predictions must be finite scalars")
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     started = perf_counter()
     exact = differentiate_policy(world, policy, gamma)
     exact_values = {s: exact.values.v[s].detach() for s in states}
     estimates = {name: [] for name in ("full_return", "reward_to_go", "exact_v", "learned_mc")}
+    if critic_values is not None:
+        estimates.update({name: [] for name in ("imperfect_v", "td_exact", "td_imperfect")})
     transitions = []
     for batch in batches:
         episode_gradients = {name: [] for name in estimates}
@@ -87,12 +108,23 @@ def collect_gradient_batches(
                 logp = episode.log_probabilities(policy.log_probabilities)
                 if name == "full_return":
                     gradient = full_return_gradient(logp, rewards, parameters, gamma)
+                elif name in ("td_exact", "td_imperfect"):
+                    table = exact_values if name == "td_exact" else critic_values
+                    gradient = one_step_td_gradient(
+                        logp, rewards, parameters, gamma,
+                        values=torch.stack([table[step.state] for step in episode.steps]),
+                        next_values=torch.stack([logp.new_zeros(()) if step.terminated else
+                                                 table[step.next_state] for step in episode.steps]),
+                        terminated=[step.terminated for step in episode.steps],
+                    )
                 else:
                     values = None
                     if name == "exact_v":
                         values = torch.stack([exact_values[step.state] for step in episode.steps])
                     elif name == "learned_mc":
                         values = baseline.for_episode(episode)
+                    elif name == "imperfect_v":
+                        values = torch.stack([critic_values[step.state] for step in episode.steps])
                     gradient = reward_to_go_gradient(logp, rewards, parameters, gamma, baselines=values)
                 episode_gradients[name].append(torch.cat(gradient))
         for name in estimates:
@@ -138,17 +170,33 @@ def collect_gradient_batches(
         "device": str(device), "dtype": str(parameters[0].dtype),
         "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
     }
+    if critic_values is not None:
+        result["baselines"]["imperfect_v"] = {
+            "method": "reward_to_go_gradient", "baseline": "same fixed table as td_imperfect",
+            "values": [critic_values[s].item() for s in states],
+        }
+        result["critics"] = {
+            name: {"method": "one_step_td_gradient", "critic": label,
+                   "values": [table[s].item() for s in states],
+                   "value_order": "policy.rows", "terminal_bootstrap": 0.,
+                   "fixed_during_probe": True}
+            for name, label, table in (("td_exact", "exact V at frozen policy", exact_values),
+                                      ("td_imperfect", "caller-supplied imperfect table", critic_values))
+        }
     result["runtime_seconds"] = {"measurement": perf_counter() - started}
     return result
 
 
-def run_short_probe(*, device: str = "cuda") -> dict:
+def run_short_probe(*, device: str = "cuda", include_td: bool = False) -> dict:
     """Fixed pilot: SHG, 32 batches x 8 probes, one separate 32-episode fit.
 
     Reuse the worked example's settings: horizon 2, no slip, gamma .5, sigma 2,
     pi=(.1,.2,.3,.4). Probes use seeds 0..255; training uses 1000..1031. Fit only
     once, with the same world, frozen policy, discount, and noise as the probes.
     The fit costs 64 additional transitions beyond the 512 shared probe steps.
+    include_td also compares exact V with Vhat(H, remaining=1)=V(H,1)+4,
+    exact everywhere else. This hand-set error needs no fitting data. Reuse
+    that same table as a Monte Carlo baseline to isolate bootstrapping bias.
     """
     started = perf_counter()
     world = Gridworld(layout=("SHG",), horizon=2, slip=0.)
@@ -159,8 +207,19 @@ def run_short_probe(*, device: str = "cuda") -> dict:
     training = [sample_episode(world, policy, seed=s, reward_noise_std=noise) for s in range(1000, 1032)]
     baseline = fit_monte_carlo_baseline(training, gamma, device=device)
     fit_elapsed = perf_counter() - fit_started
+    imperfect = None
+    if include_td:
+        with torch.no_grad():
+            imperfect = {s: v.clone() for s, v in evaluate_policy(world, policy, gamma).v.items()}
+            imperfect[State((0, 1), 1)] += 4.
     run = collect_gradient_batches(world, policy, batch_seeds=[list(range(i, i+8)) for i in range(0, 256, 8)],
-                                   baseline=baseline, gamma=gamma, reward_noise_std=noise)
+                                   baseline=baseline, gamma=gamma, reward_noise_std=noise,
+                                   imperfect_critic=imperfect)
+    if include_td:
+        run["critics"]["td_imperfect"].update(
+            construction="exact V + 4 at H with one step remaining; exact elsewhere",
+            training_transitions=0, scope="deliberate fixed error, not a fitted critic",
+        )
     run["baselines"]["learned_mc"]["training_settings"] = "same world, policy, gamma, and noise as probes"
     run["runtime_seconds"].update(baseline_collection_and_fit=fit_elapsed,
                                   total_before_serialization=perf_counter() - started)
@@ -188,6 +247,8 @@ def main(argv=None) -> None:
     collect = commands.add_parser("run", help="collect the fixed short comparison")
     collect.add_argument("--output-dir", type=Path, required=True)
     collect.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    collect.add_argument("--td", action="store_true",
+                         help="also compare exact/imperfect one-step TD and the same imperfect MC baseline")
     summarize = commands.add_parser("summarize", help="print summary JSON from raw data; no new episodes")
     summarize.add_argument("path", type=Path, help="saved probe.json")
     args = parser.parse_args(argv)
@@ -196,7 +257,7 @@ def main(argv=None) -> None:
         return
     if args.output_dir.exists():
         parser.error("output directory already exists; choose a new path to preserve existing outputs")
-    run = run_short_probe(device=args.device)
+    run = run_short_probe(device=args.device, include_td=args.td)
     save_probe(run, args.output_dir)
     print("estimator        squared bias   variance(B)       MSE   mean noise floor")
     for name, metrics in summarize_probe(run).items():
