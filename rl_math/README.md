@@ -33,7 +33,10 @@ The locked Linux environment includes CUDA-enabled PyTorch, NumPy, Matplotlib, J
 and the Python kernel. In JupyterLab, use **Python 3 (ipykernel)** and choose
 **Run All Cells**. Restart the kernel after changing the environment. In VS Code,
 select this directory's `.venv/bin/python` as the notebook interpreter. The
-`.python-version` file selects Python 3.10; `uv.lock` records exact dependencies.
+`.python-version` file selects Python 3.11 (minimum 3.11.5); `uv.lock` records
+exact dependencies. The patched Pillow, filelock, Tornado, and Soup Sieve
+dependencies require this newer Python baseline. `uv sync --locked` creates
+the matching environment; restart the notebook kernel after upgrading.
 
 The tabular policy stores float64 PyTorch parameters, using CUDA when available.
 Pass `device="cuda"` to require the GPU, or `device="cpu"` for CPU reference checks.

@@ -2,7 +2,7 @@
 name = "rl-math"
 version = "0.1.0"
 description = "Small reinforcement learning experiments for a mathematical primer"
-requires-python = ">=3.10"
+requires-python = ">=3.11.5"
 dependencies = [
     "matplotlib>=3.7,<4",
     "numpy>=1.24,<3",
@@ -17,3 +17,10 @@ dev = [
 
 [tool.uv]
 package = false
+# Security floors for transitive runtime and notebook dependencies.
+constraint-dependencies = [
+    "filelock>=4.2.1",
+    "pillow>=13.0.0",
+    "soupsieve>=4.0.0",
+    "tornado>=6.6.1",
+]
