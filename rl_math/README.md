@@ -332,3 +332,29 @@ episode sums. The worked comparison uses complete episodes. Cutoff targets
 retain critic predictions and can retain their bias even with a large n.
 No rollout collector, partial rollout actor weighting, GAE, or policy/critic
 training is introduced by these helpers.
+
+`algorithms.advantages.gae_advantages(rewards, values, next_values, terminated, truncated, gamma, lambda_=...)`
+computes generalized advantage estimation from the same frozen critic predictions.
+It reuses the one-step residual, then works backward with
+`Ahat_t = delta_t + gamma * lambda_ * Ahat_{t+1}`, stopping at either termination
+or truncation. True termination also zeros the next-value bootstrap inside delta;
+external truncation and continuing-task batch cutoffs retain the final pre-reset
+observation's value. The residual after the last batch row is zero. The output
+is detached and follows the nonempty 1D current-value tensor's dtype/device.
+
+Within an uninterrupted segment, `next_values[t]` must equal `values[t+1]` from
+the same observation and frozen critic; reset boundaries use their own final
+observation instead. With this consistency, lambda=0 matches TD and lambda=1
+matches the full bootstrapped n-step advantage. Only a completed task with zero
+terminal bootstrap reduces to `G_t - Vhat(s_t)`; a cutoff retains its final value.
+The helper cannot identify incorrectly supplied observations or missing flags.
+
+The notebook's **GAE: accumulate discounted TD residuals** section works a
+three-transition sequence by hand, checks an intermediate lambda against an
+expanded residual sum and finite n-step mixture, and isolates a reset inside
+a batch. See the [GAE paper](https://arxiv.org/abs/1506.02438) for the estimator
+construction. Our actor convention remains the discounted start-state objective:
+apply outer `gamma**t` from episode start and average whole episode sums.
+GAE itself computes targets only, with no normalization or parameter updates.
+Partial rollout actor weighting and comparisons across lambda settings are
+separate work.

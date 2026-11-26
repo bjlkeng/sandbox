@@ -63,9 +63,7 @@ def _transition_inputs(rewards, values, next_values, terminated, gamma):
 def _n_step_targets(rewards, next_values, terminal, truncated, gamma, n):
     if isinstance(n, bool) or not isinstance(n, Integral) or n < 1:
         raise ValueError("n must be a positive integer")
-    truncated = torch.as_tensor(truncated, device=next_values.device)
-    if truncated.shape != next_values.shape or truncated.dtype != torch.bool:
-        raise ValueError("supply one boolean truncated flag per transition")
+    truncated = _truncation_flags(truncated, next_values)
 
     bootstrap = torch.where(terminal, torch.zeros_like(next_values), next_values)
     targets = rewards + gamma * bootstrap  # One observed reward, then a value.
@@ -141,4 +139,64 @@ def n_step_advantages(
     advantages = targets - values
     if not torch.isfinite(advantages).all():
         raise ValueError("n-step advantages must be finite")
+    return advantages
+
+
+def _truncation_flags(truncated, values):
+    flags = torch.as_tensor(truncated, device=values.device)
+    if flags.shape != values.shape or flags.dtype != torch.bool:
+        raise ValueError("supply one boolean truncated flag per transition")
+    return flags
+
+
+def gae_advantages(
+    rewards: Tensor | Sequence[float],
+    values: Tensor,
+    next_values: Tensor | Sequence[float],
+    terminated: Tensor | Sequence[bool],
+    truncated: Tensor | Sequence[bool],
+    gamma: float = 1.0,
+    *,
+    lambda_: float,
+) -> Tensor:
+    """Accumulate fixed TD residuals backward, stopping at every reset.
+
+    delta_t = r_{t+1} + gamma * (1-terminated_t) * Vhat(s_{t+1}) - Vhat(s_t)
+    Ahat_t = delta_t + gamma * lambda_ * (1-boundary_t) * Ahat_{t+1}
+
+    boundary is terminated OR truncated; the trace also starts at zero after
+    the final batch row. An external truncation or continuing-task rollout
+    cutoff still uses its final pre-reset observation's value inside delta.
+    True termination alone zeros that bootstrap. If both flags are true,
+    termination wins. These masks serve different purposes.
+
+    Supply one consecutive nonempty stream and mark every reset, following
+    n_step_returns' caller requirements. Keep the policy and critic fixed.
+    Within a segment, next_values[t] must match values[t+1] for the same
+    observation/critic; final pre-reset values can differ from the reset row.
+    The helper cannot detect wrong observations or missing flags. With this
+    consistency, lambda_=1 telescopes to the full bootstrapped n-step
+    advantage, or G_t-Vhat(s_t) for a complete episode. lambda_=0 gives TD.
+
+    values defines output dtype/device. Rewards and both value predictions
+    are detached by one_step_td_advantages; only finite scalar inputs and
+    gamma, lambda_ in [0,1] are accepted. No advantage normalization, outer
+    episode-time gamma**t, actor/critic updates, or policy optimizer is applied.
+    Use those outer weights and average whole episode sums when estimating
+    the discounted start-state gradient. Partial rollout actor weighting is
+    the caller's responsibility.
+    """
+    if not 0. <= lambda_ <= 1.:
+        raise ValueError("lambda_ must lie in [0, 1]")
+    delta = one_step_td_advantages(rewards, values, next_values, terminated, gamma)
+    boundary = torch.as_tensor(terminated, device=delta.device) | _truncation_flags(truncated, delta)
+    advantages = torch.empty_like(delta)
+    zero = delta.new_zeros(())
+    following = zero  # No residual after the batch, even at a nonterminal cutoff.
+    for t in reversed(range(len(delta))):
+        continuation = torch.where(boundary[t], zero, following)
+        following = delta[t] + gamma * lambda_ * continuation
+        advantages[t] = following
+    if not torch.isfinite(advantages).all():
+        raise ValueError("GAE advantages must be finite")
     return advantages
