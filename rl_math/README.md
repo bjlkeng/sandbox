@@ -304,3 +304,31 @@ uv run --locked python -m gridworld.play
 
 The player is available at <http://127.0.0.1:8000>; use `--port` to choose another port.
 The worked example is in [notebooks/01_gridworld.ipynb](notebooks/01_gridworld.ipynb).
+
+`algorithms.advantages.n_step_returns(rewards, next_values, terminated, truncated, gamma, n=...)`
+observes up to n rewards and bootstraps from the last available successor.
+`n_step_advantages(rewards, values, next_values, terminated, truncated, gamma, n=...)`
+subtracts the current value. `values` (or `next_values` for returns) is a nonempty
+1D floating tensor setting dtype/device. All rewards and predictions detach;
+keep the critic fixed. n=1 matches the TD residual; n covering a completed
+episode gives `G_t - Vhat(s_t)`. The notebook's **n-step returns: observe more
+rewards before predicting** section works both endpoints and enumerates all
+16 SHG paths to compare population gradient bias, variance, and MSE for n=1,2
+with exact and imperfect critics, without sampling or fitting.
+
+The inputs describe a consecutive transition stream. Mark every reset with
+`terminated` or `truncated`. True termination zeros the bootstrap (including
+this task's finite horizon); external truncation stops reward accumulation and
+uses the final observation's value. If both flags are true, termination wins.
+The last batch row implicitly stops accumulation and retains its bootstrap for
+a continuing task. Always supply each transition's **pre-reset successor** in
+`next_values`; a reset row's current value is not its predecessor's next value.
+The helper cannot detect an incorrect observation or missing reset flag.
+This follows [Gymnasium's time-limit conventions](https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/).
+
+The helpers produce learning targets only. A discounted start-state actor still
+needs outer `gamma**t`, with t measured from episode start, and averages whole
+episode sums. The worked comparison uses complete episodes. Cutoff targets
+retain critic predictions and can retain their bias even with a large n.
+No rollout collector, partial rollout actor weighting, GAE, or policy/critic
+training is introduced by these helpers.
